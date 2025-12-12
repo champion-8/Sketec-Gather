@@ -26,12 +26,25 @@ const GRID_SIZE = 40;
 
 // --- Assets ---
 const AVATARS = [
-  "https://gameartpartners.com/wp-content/uploads/edd/2015/06/goblin_featured.png",
-  "https://www.pngkey.com/png/full/106-1066616_ninja-royalty-free-game-art-character-png-character.png",
-  "https://png.pngtree.com/png-vector/20250805/ourmid/pngtree-ashen-blonde-elf-in-magenta-cape-with-curved-sword-16-bit-png-image_17026789.webp",
-  "https://static.vecteezy.com/system/resources/previews/058/267/325/non_2x/adorable-cartoon-ninja-character-with-two-katanas-ready-for-action-free-png.png",
-  "https://png.pngtree.com/png-vector/20241203/ourmid/pngtree-anime-style-chibi-mongol-warrior-holding-sword-in-traditional-mongolian-battle-png-image_13784919.png",
-  "https://png.pngtree.com/png-vector/20240315/ourmid/pngtree-cute-unicorn-unicorn-kawaii-chibi-drawing-style-unicorn-cartoon-png-image_11972740.png",
+  "https://www.pngkey.com/png/full/148-1483951_natsu-chibi-png.png",
+  "https://www.wallsnapy.com/img_gallery/cute-one-piece-chibi-luffy-anime-style-uhd-323923.png",
+  "https://freepngimg.com/thumb/one_piece/23087-3-one-piece-chibi-transparent-thumb.png",
+  "https://png.pngtree.com/png-vector/20230801/ourmid/pngtree-cartoon-one-piece-stickers-with-a-hat-vector-png-image_6818478.png",
+  "https://mystickermania.com/cdn/stickers/chibi-marvel-dc-comics/marvel-cute-groot-512x512.png",
+  "https://www.pngplay.com/wp-content/uploads/8/Thor-Avengers-Background-PNG-Image.png",
+  "https://png.pngtree.com/png-clipart/20230913/original/pngtree-avenger-clipart-cartoon-character-with-red-hair-and-metal-suit-vector-png-image_11074409.png",
+  "https://mystickermania.com/cdn/stickers/chibi-marvel-dc-comics/chibi-marvel-deadpool-512x512.png",
+  "https://mystickermania.com/cdn/stickers/chibi-marvel-dc-comics/marvel-chibi-thor-512x512.png",
+  "https://mystickermania.com/cdn/stickers/chibi-marvel-dc-comics/marvel-chibi-doctor-strange-512x512.png",
+  "https://file.aiquickdraw.com/imgcompressed/img/compressed_255d3d4fcb5101e4842d30dde465a6da.webp",
+  "https://png.pngtree.com/png-vector/20241025/ourmid/pngtree-adorable-super-baby-young-superhero-kid-cartoon-on-transparent-background-png-image_14153984.png",
+  "https://freepngimg.com/save/149647-chibi-iron-man-png-download-free/555x555",
+  "https://png.pngtree.com/png-vector/20241203/ourmid/pngtree-professional-chibi-character-with-a-red-tie-png-image_14191758.png",
+  "https://64.media.tumblr.com/d34e1ade2f41f911a2d231555920a715/2afa90d7ab10a02f-0c/s400x600/68b1a5a7924376cff68b12475170199a03ae583b.pnj",
+  "https://png.pngtree.com/png-vector/20241122/ourmid/pngtree-cute-santa-chibi-characters-vector-png-image_14537022.png",
+  "https://static.vecteezy.com/system/resources/thumbnails/051/135/766/small/stylized-cartoon-ninja-character-illustration-free-png.png",
+  "https://png.pngtree.com/png-vector/20250609/ourmid/pngtree-3d-chibi-dragon-knight-character-png-image_16401585.png",
+  "https://png.pngtree.com/png-vector/20241009/ourmid/pngtree-cute-chibi-costume-dragon-png-image_14042529.png"
 ];
 
 const ZONES = [
