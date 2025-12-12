@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect, useCallback } from "react";
 import "./styles.css";
 import { Room, RoomEvent, Track } from "livekit-client";
 
+const TOKEN_ENDPOINT = import.meta.env.VITE_TOKEN_ENDPOINT || "http://localhost:3001/livekit/token";
 const LIVEKIT_URL = import.meta.env.VITE_LIVEKIT_URL;
 
 const MAP_WIDTH = 2000;
@@ -262,7 +263,7 @@ export default function App() {
 
   async function connect(userId) {
     try {
-      const res = await fetch("http://localhost:3001/livekit/token", {
+      const res = await fetch(TOKEN_ENDPOINT, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roomName: "OfficeMap", identity: userId }),
       });
