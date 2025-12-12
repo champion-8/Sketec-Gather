@@ -68,7 +68,7 @@ body,
   position: absolute;
   top: 0;
   left: 0;
-  width: 2000px;
+  width: 2670px;
   height: 2000px;
   background-image: url("https://www.lemon8-app.com/seo/image?item_id=7257176236571574786&index=6&sign=93b72e1026ff507053219bf8b90d88d1");
   background-size: cover;
@@ -326,7 +326,7 @@ body,
 .member-menu-popup {
   position: absolute;
   top: 40px;
-  right: 10px;
+  right: 40px;
   background: #0f172a;
   border: 1px solid #475569;
   border-radius: 8px;
@@ -439,8 +439,7 @@ body,
   align-items: center;
   box-shadow: 0 -5px 25px rgba(0, 0, 0, 0.5);
   z-index: 200;
-  width: 100%;
-  max-width: 96vw;
+  width: calc(100vw - 40px);
   justify-content: space-between;
 }
 

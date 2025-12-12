@@ -5,7 +5,7 @@ import { Room, RoomEvent, Track } from "livekit-client";
 const TOKEN_ENDPOINT = import.meta.env.VITE_TOKEN_ENDPOINT || "http://localhost:3001/livekit/token";
 const LIVEKIT_URL = import.meta.env.VITE_LIVEKIT_URL;
 
-const MAP_WIDTH = 2000;
+const MAP_WIDTH = 2670;
 const MAP_HEIGHT = 2000;
 const SPEED = 8;
 const COLLISION_RADIUS = 40; 
@@ -22,11 +22,12 @@ const AVATARS = [
 ];
 
 const ZONES = [
-  { id: 'meeting', name: 'Meeting Room', x: 280, y: 200, w: 500, h: 550, color: '#3b82f6' },
+  { id: 'hospital', name: 'Hospital', x: 280, y: 200, w: 500, h: 550, color: '#3b82f6' },
   { id: 'bar', name: 'Bar', x: 100, y: 1200, w: 680, h: 430, color: '#eab308' },
   { id: 'holiday_villa', name: 'Holiday Villa', x: 850, y: 1150, w: 960, h: 520, color: '#ec4899' },
   { id: 'meeting_2', name: 'Meeting', x: 940, y: 80, w: 840, h: 380, color: '#45cca8ff' },
   { id: 'garden', name: 'Garden', x: 810, y: 510, w: 850, h: 590, color: '#6945c5ff' },
+  { id: 'basketball', name: 'Basketball', x: 1790, y: 80, w: 790, h: 380, color: '#38bb77ff' },
 ];
 
 const OBSTACLES = [
@@ -39,7 +40,7 @@ const OBSTACLES = [
   // { id: 'wall-1-5', x: 280, y: 210, w: 10, h: 540 },
   // { id: 'wall-1-6', x: 780, y: 80, w: 10, h: 680 },
   // { id: 'wall-1-7', x: 280, y: 200, w: 500, h: 10 },
-  { id: 'tree-1', x: 1130, y: 680, w: 230, h: 220 },
+  // { id: 'tree-1', x: 1130, y: 680, w: 230, h: 220 },
 ];
 
 const STATUS_OPTIONS = [
@@ -60,6 +61,39 @@ function getRandomSpawn() {
     if (!checkObstacle(spawn.x, spawn.y)) valid = true;
   }
   return spawn;
+}
+
+function hasLineOfSight(a, b) {
+  const step = 10; // ยิ่งเล็กยิ่งแม่น แต่ช้าขึ้น
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dist = Math.hypot(dx, dy);
+  const n = Math.ceil(dist / step);
+
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const x = a.x + dx * t;
+    const y = a.y + dy * t;
+    if (checkObstacle(x, y)) return false;
+  }
+  return true;
+}
+
+function smoothPath(path) {
+  if (!path || path.length <= 2) return path || [];
+  const out = [path[0]];
+  let i = 0;
+
+  while (i < path.length - 1) {
+    let j = path.length - 1;
+    while (j > i + 1) {
+      if (hasLineOfSight(path[i], path[j])) break;
+      j--;
+    }
+    out.push(path[j]);
+    i = j;
+  }
+  return out;
 }
 
 // --- Pathfinding Logic (A*) ---
@@ -102,12 +136,22 @@ function findPath(startX, startY, endX, endY) {
       return path.reverse();
     }
     closedList.push(current);
-    const neighbors = [{ x: current.x + 1, y: current.y }, { x: current.x - 1, y: current.y }, { x: current.x, y: current.y + 1 }, { x: current.x, y: current.y - 1 }];
+    const neighbors = [
+  { x: current.x + 1, y: current.y, cost: 1 },
+  { x: current.x - 1, y: current.y, cost: 1 },
+  { x: current.x, y: current.y + 1, cost: 1 },
+  { x: current.x, y: current.y - 1, cost: 1 },
+
+  { x: current.x + 1, y: current.y + 1, cost: Math.SQRT2 },
+  { x: current.x + 1, y: current.y - 1, cost: Math.SQRT2 },
+  { x: current.x - 1, y: current.y + 1, cost: Math.SQRT2 },
+  { x: current.x - 1, y: current.y - 1, cost: Math.SQRT2 },
+];
     for (let neighbor of neighbors) {
       if (neighbor.x < 0 || neighbor.y < 0 || neighbor.y >= grid.length || neighbor.x >= grid[0].length) continue;
       if (grid[neighbor.y][neighbor.x] === 1) continue;
       if (closedList.find(n => n.x === neighbor.x && n.y === neighbor.y)) continue;
-      let tentativeG = current.g + 1;
+      let tentativeG = current.g + neighbor.cost;
       let existing = openList.find(n => n.x === neighbor.x && n.y === neighbor.y);
       if (!existing || tentativeG < existing.g) {
         neighbor.g = tentativeG; neighbor.f = neighbor.g + getDistance(neighbor, endNode);
@@ -172,7 +216,6 @@ export default function App() {
   const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
 
   const [showRightPanel, setShowRightPanel] = useState(true);
-  const [showBottomPanel, setShowBottomPanel] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   
   const [activeTab, setActiveTab] = useState('members');
@@ -246,6 +289,8 @@ export default function App() {
   useEffect(() => { if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages, activeTab]);
 
   useEffect(() => { otherPlayersRef.current = otherPlayers; }, [otherPlayers]);
+
+
 
   // Helper to remove video safely
   const removeVideoTrack = (sid) => {
@@ -398,7 +443,7 @@ export default function App() {
   const toggleNoise = async () => { const n = !noiseOn; setNoiseOn(n); if (roomRef.current && micOn) { const t = roomRef.current.localParticipant.getTrackPublication(Track.Source.Microphone); if (t && t.track) await t.track.restart({ echoCancellation: true, noiseSuppression: n, autoGainControl: true }); } };
   const handleMaximize = (id) => setMaximizedTrackId(prev => prev === id ? null : id);
   const handleStatusChange = (s) => { setMyAvailability(s); setShowStatusMenu(false); };
-  const handleCustomStatus = () => { setMyStatusText(tempStatusText); setTempStatusText(""); setShowStatusMenu(false); };
+  // const handleCustomStatus = () => { setMyStatusText(tempStatusText); setTempStatusText(""); setShowStatusMenu(false); };
 
   const handleWalkTo = useCallback((x, y, targetId = null) => {
     followingRef.current = targetId; setFollowingId(targetId);
@@ -409,8 +454,14 @@ export default function App() {
         pathRef.current = [];
     } else {
         const path = findPath(posRef.current.x, posRef.current.y, x, y);
-        if (path && path.length > 0) { pathRef.current = path; targetRef.current = path[0]; }
-        else { targetRef.current = { x, y }; pathRef.current = []; }
+        const smooth = smoothPath(path);
+        if (smooth && smooth.length > 0) {
+          pathRef.current = smooth;
+          targetRef.current = smooth[0];
+        } else {
+          targetRef.current = { x, y };
+          pathRef.current = [];
+        }
     }
     setClickMarker({ x, y, id: markerIdRef.current++ }); setSelectedMemberId(null);
   }, []);
@@ -422,7 +473,24 @@ export default function App() {
     handleWalkTo(worldX, worldY, null);
   };
 
-  const handleWheel = (e) => setZoom(prev => Math.min(Math.max(0.3, prev + (-e.deltaY * 0.001)), 2.5));
+  const getMinZoom = useCallback(() => {
+  const rightPanelW = showRightPanel ? 320 : 0;
+  const usableW = viewport.w - rightPanelW;
+  const usableH = viewport.h - 80; // เผื่อ bottom bar
+  return Math.min(usableW / MAP_WIDTH, usableH / MAP_HEIGHT);
+}, [viewport.w, viewport.h, showRightPanel]);
+
+  const handleWheel = (e) => {
+  setZoom(prev => {
+    const minZoom = getMinZoom();
+    return Math.min(Math.max(minZoom, prev + (-e.deltaY * 0.001)), 2.5);
+  });
+};
+
+  useEffect(() => {
+  const minZoom = getMinZoom();
+  setZoom(z => (z < minZoom ? minZoom : z));
+}, [getMinZoom]);
 
   const sendChat = async () => {
     if (!chatInput.trim() || !roomRef.current) return;
@@ -481,22 +549,24 @@ export default function App() {
       }
 
       if (isMoving) {
-        let nextX = posRef.current.x + moveX; let nextY = posRef.current.y + moveY;
-        let cx = false, cy = false;
+        // let nextX = posRef.current.x + moveX; let nextY = posRef.current.y + moveY;
+        // let cx = false, cy = false;
         
-        if (!isGhostRef.current) {
-            if (checkObstacle(nextX, posRef.current.y)) cx = true;
-            if (checkObstacle(posRef.current.x, nextY)) cy = true;
-            Object.values(otherPlayersRef.current).forEach(p => {
-              if (getDistance(posRef.current, p) < 10) return;
-              if (getDistance({x: nextX, y: posRef.current.y}, p) < COLLISION_RADIUS) cx = true;
-              if (getDistance({x: posRef.current.x, y: nextY}, p) < COLLISION_RADIUS) cy = true;
-            });
-        }
-        if (cx) moveX = 0; if (cy) moveY = 0;
-        if (isGhostRef.current || !checkObstacle(posRef.current.x + moveX, posRef.current.y + moveY)) {
-          posRef.current.x += moveX; posRef.current.y += moveY;
-        }
+        // if (!isGhostRef.current) {
+        //     if (checkObstacle(nextX, posRef.current.y)) cx = true;
+        //     if (checkObstacle(posRef.current.x, nextY)) cy = true;
+        //     Object.values(otherPlayersRef.current).forEach(p => {
+        //       if (getDistance(posRef.current, p) < 10) return;
+        //       if (getDistance({x: nextX, y: posRef.current.y}, p) < COLLISION_RADIUS) cx = true;
+        //       if (getDistance({x: posRef.current.x, y: nextY}, p) < COLLISION_RADIUS) cy = true;
+        //     });
+        // }
+        // if (cx) moveX = 0; if (cy) moveY = 0;
+        // if (isGhostRef.current || !checkObstacle(posRef.current.x + moveX, posRef.current.y + moveY)) {
+        //   posRef.current.x += moveX; posRef.current.y += moveY;
+        // }
+        posRef.current.x += moveX;
+posRef.current.y += moveY;
       }
 
       const z = checkZone(posRef.current.x, posRef.current.y);
@@ -622,9 +692,9 @@ export default function App() {
                               <div className="member-custom-status" style={{color: getStatusColor(m.s)}}>{m.st || m.s || "Available"}</div>
                               {m.id === identity && showStatusMenu && <div className="member-menu-popup" style={{top: 25, zIndex: 600}}>
                                   {STATUS_OPTIONS.map(opt => <button key={opt.label} className="menu-action-btn" onClick={(e)=>{e.stopPropagation(); handleStatusChange(opt.label);}}><span style={{color: opt.color}}>●</span> {opt.label}</button>)}
-                                  <div style={{padding: '5px 8px'}}>
+                                  {/* <div style={{padding: '5px 8px'}}>
                                     <input className="status-edit-input" placeholder="Custom status..." value={tempStatusText} onChange={(e)=>setTempStatusText(e.target.value)} onKeyDown={(e)=>{if(e.key==='Enter') handleCustomStatus()}} />
-                                  </div>
+                                  </div> */}
                               </div>}
                            </div>
                            <div className="status-dot" style={{background: getStatusColor(m.s)}}></div>
