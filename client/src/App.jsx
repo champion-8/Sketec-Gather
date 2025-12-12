@@ -321,6 +321,49 @@ export default function App() {
   const [otherPlayers, setOtherPlayers] = useState({});
   const [speakingIds, setSpeakingIds] = useState([]);
 
+  const pinchRef = useRef({
+    active: false,
+    startDist: 0,
+    startZoom: 1,
+  });
+
+  const getTouchDist = (t1, t2) => {
+    const dx = t2.clientX - t1.clientX;
+    const dy = t2.clientY - t1.clientY;
+    return Math.hypot(dx, dy);
+  };
+
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dist = getTouchDist(e.touches[0], e.touches[1]);
+      pinchRef.current = {
+        active: true,
+        startDist: dist,
+        startZoom: zoom,
+      };
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (pinchRef.current.active && e.touches.length === 2) {
+      e.preventDefault();
+      const dist = getTouchDist(e.touches[0], e.touches[1]);
+      const ratio = dist / pinchRef.current.startDist;
+
+      const minZoom = getMinZoom();
+      const next = pinchRef.current.startZoom * ratio;
+
+      setZoom(Math.min(Math.max(minZoom, next), 2.5));
+    }
+  };
+
+  const handleTouchEnd = (e) => {
+    if (e.touches.length < 2) {
+      pinchRef.current.active = false;
+    }
+  };
+
   // Initial Zoom OUT (60%)
   const [zoom, setZoom] = useState(0.6);
   const [viewport, setViewport] = useState({
@@ -742,6 +785,25 @@ export default function App() {
     setZoom((z) => (z < minZoom ? minZoom : z));
   }, [getMinZoom]);
 
+  useEffect(() => {
+    const el = document.querySelector(".game-container");
+    if (!el) return;
+
+    const ts = (e) => handleTouchStart(e);
+    const tm = (e) => handleTouchMove(e);
+    const te = (e) => handleTouchEnd(e);
+
+    el.addEventListener("touchstart", ts, { passive: false });
+    el.addEventListener("touchmove", tm, { passive: false });
+    el.addEventListener("touchend", te, { passive: false });
+
+    return () => {
+      el.removeEventListener("touchstart", ts);
+      el.removeEventListener("touchmove", tm);
+      el.removeEventListener("touchend", te);
+    };
+  }, [zoom, getMinZoom, handleTouchStart, handleTouchMove]);
+
   const sendChat = async () => {
     if (!chatInput.trim() || !roomRef.current) return;
     let scope = activeTab === "members" ? "global" : activeTab;
@@ -1001,7 +1063,13 @@ export default function App() {
     s === "Do Not Disturb" ? "#ef4444" : s === "Busy" ? "#f59e0b" : "#22c55e";
 
   return (
-    <div className="game-container" onWheel={handleWheel}>
+    <div
+      className="game-container"
+      onWheel={handleWheel}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
       {!joined && (
         <div className="login-screen">
           <div className="login-card">

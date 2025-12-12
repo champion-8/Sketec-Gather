@@ -14,6 +14,10 @@ body,
 }
 
 .game-container {
+  touch-action: none;           /* สำคัญ: ให้ pinch/drag ส่งเข้ JS */
+  -webkit-user-select: none;
+  user-select: none;
+  
   position: relative;
   width: 100vw;
   height: 100vh;
