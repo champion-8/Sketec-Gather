@@ -33,6 +33,7 @@ app.post("/livekit/token", async (req, res) => {
   res.json({ token  });
 });
 
-app.listen(3001, () => {
-  console.log("Token server on http://localhost:3001/livekit/token");
+const port = process.env.PORT || 3001;
+app.listen(port, () => {
+  console.log(`Token server listening on port ${port}`);
 });
