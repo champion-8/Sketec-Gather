@@ -94,6 +94,42 @@ const ZONES = [
     h: 380,
     color: "#38bb77ff",
   },
+  {
+    id: "fashion",
+    name: "Fashion",
+    x: 0,
+    y: 850,
+    w: 370,
+    h: 300,
+    color: "#bb3838ff",
+  },
+  {
+    id: "barber",
+    name: "Barber",
+    x: 1740,
+    y: 480,
+    w: 590,
+    h: 250,
+    color: "#085972ff",
+  },
+  {
+    id: "shop",
+    name: "Shop",
+    x: 1720,
+    y: 780,
+    w: 420,
+    h: 300,
+    color: "#b38300ff",
+  },
+  {
+    id: "car",
+    name: "Car",
+    x: 1990,
+    y: 1120,
+    w: 180,
+    h: 150,
+    color: "#b10000ff",
+  },
 ];
 
 const OBSTACLES = [
