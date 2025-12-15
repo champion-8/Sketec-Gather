@@ -40,11 +40,11 @@ const AVATARS = [
   "https://png.pngtree.com/png-vector/20241025/ourmid/pngtree-adorable-super-baby-young-superhero-kid-cartoon-on-transparent-background-png-image_14153984.png",
   "https://freepngimg.com/save/149647-chibi-iron-man-png-download-free/555x555",
   "https://png.pngtree.com/png-vector/20241203/ourmid/pngtree-professional-chibi-character-with-a-red-tie-png-image_14191758.png",
-  "https://64.media.tumblr.com/d34e1ade2f41f911a2d231555920a715/2afa90d7ab10a02f-0c/s400x600/68b1a5a7924376cff68b12475170199a03ae583b.pnj",
+  "https://png.pngtree.com/png-clipart/20230407/original/pngtree-cute-school-anime-chibi-character-png-image_9035249.png",
   "https://png.pngtree.com/png-vector/20241122/ourmid/pngtree-cute-santa-chibi-characters-vector-png-image_14537022.png",
   "https://static.vecteezy.com/system/resources/thumbnails/051/135/766/small/stylized-cartoon-ninja-character-illustration-free-png.png",
   "https://png.pngtree.com/png-vector/20250609/ourmid/pngtree-3d-chibi-dragon-knight-character-png-image_16401585.png",
-  "https://png.pngtree.com/png-vector/20241009/ourmid/pngtree-cute-chibi-costume-dragon-png-image_14042529.png"
+  "https://png.pngtree.com/png-vector/20241009/ourmid/pngtree-cute-chibi-costume-dragon-png-image_14042529.png",
 ];
 
 const ZONES = [
@@ -129,6 +129,15 @@ const ZONES = [
     w: 180,
     h: 150,
     color: "#b10000ff",
+  },
+  {
+    id: "house",
+    name: "House",
+    x: 2120,
+    y: 1420,
+    w: 350,
+    h: 280,
+    color: "#190aa5ff",
   },
 ];
 
@@ -532,7 +541,9 @@ export default function App() {
       roomRef.current = room;
 
       room.on(RoomEvent.ActiveSpeakersChanged, (speakers) =>
-        setSpeakingIds(speakers.map((s) => s.identity))
+        setSpeakingIds(
+          speakers.map((s) => s.identity).filter((pid) => canHear(pid))
+        )
       );
 
       // --- Handle Remote Tracks ---
@@ -906,7 +917,29 @@ export default function App() {
     );
     setSelectedMemberId(null);
   };
+  const HEAR_DISTANCE = 600;
 
+  const canHear = useCallback(
+    (pid) => {
+      if (pid === identity) return true;
+      const other = otherPlayersRef.current[pid];
+      if (!other) return false;
+
+      const myZoneId = myZone?.id || null;
+      const otherZoneId = other.z || null;
+
+      // อยู่โซนเดียวกัน -> ได้ยิน
+      if (myZoneId && otherZoneId && myZoneId === otherZoneId) return true;
+
+      // ถ้าคนใดคนหนึ่งอยู่ในโซน แต่ไม่ใช่โซนเดียวกัน -> ไม่ได้ยิน
+      if (myZoneId || otherZoneId) return false;
+
+      // ทั้งคู่ Lobby -> วัดระยะ
+      const dist = getDistance(posRef.current, other);
+      return dist <= HEAR_DISTANCE;
+    },
+    [identity, myZone]
+  );
   const isParticipantVisible = (targetId) => {
     if (targetId === identity) return true;
     const other = otherPlayers[targetId];
@@ -1015,35 +1048,47 @@ export default function App() {
 
   useEffect(() => {
     if (!connected) return;
-    const MAX = 600,
-      MIN = 100;
+
     Object.keys(otherPlayers).forEach((pid) => {
       const other = otherPlayers[pid];
       const obj = audioTracksRef.current[pid];
-      if (obj) {
-        if (
-          other.m ||
-          myAvailability === "Do Not Disturb" ||
-          other.s === "Do Not Disturb"
-        ) {
-          obj.track.setVolume(0);
-        } else {
-          const z1 = myZone?.id,
-            z2 = other.z;
-          let vol = 0;
-          if (z1 && z2 && z1 === z2) vol = 1;
-          else if (z1 || z2) vol = 0;
-          else {
-            const dist = getDistance(posRef.current, other);
-            if (dist <= MIN) vol = 1;
-            else if (dist > MAX) vol = 0;
-            else vol = 1 - Math.pow((dist - MIN) / (MAX - MIN), 2);
-          }
-          obj.track.setVolume(vol);
-        }
+      if (!obj) return;
+
+      // mute เงื่อนไขพิเศษ
+      if (
+        other.m || // เขาปิดไมค์
+        myAvailability === "Do Not Disturb" ||
+        other.s === "Do Not Disturb"
+      ) {
+        obj.track.setVolume(0);
+        return;
       }
+
+      // ได้ยินเฉพาะ ใกล้กัน หรือ โซนเดียวกัน
+      if (!canHear(pid)) {
+        obj.track.setVolume(0);
+        return;
+      }
+
+      // ถ้าโซนเดียวกัน ให้เต็ม
+      const myZoneId = myZone?.id || null;
+      if (myZoneId && other.z && myZoneId === other.z) {
+        obj.track.setVolume(1);
+        return;
+      }
+
+      // ถ้า Lobby ใกล้ๆ ค่อยไล่ระดับ
+      const MAX = 600,
+        MIN = 100;
+      const dist = getDistance(posRef.current, other);
+      let vol = 0;
+      if (dist <= MIN) vol = 1;
+      else if (dist > MAX) vol = 0;
+      else vol = 1 - Math.pow((dist - MIN) / (MAX - MIN), 2);
+
+      obj.track.setVolume(vol);
     });
-  }, [myPos, otherPlayers, connected, myZone, myAvailability]);
+  }, [myPos, otherPlayers, connected, myZone, myAvailability, canHear]);
 
   const targetCamX =
     (viewport.w - (showRightPanel ? 320 : 0)) / 2 - myPos.x * zoom;
