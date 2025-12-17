@@ -750,7 +750,7 @@ select {
   padding: 4px 12px;
   border-radius: 12px;
   background: #22c55e;
-  color: black;
+  color: white;
   font-weight: bold;
   cursor: pointer;
   box-shadow: 0 4px 6px rgba(34, 197, 94, 0.4);
@@ -779,4 +779,160 @@ select {
 .btn-ignore:hover {
   background: #dc2626;
   box-shadow: 0 6px 8px rgba(220, 38, 38, 0.5);
+}
+
+/* ===== DM Header ===== */
+.dm-target-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 12px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+.dm-target-info b { color: #fff; }
+.dm-close {
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+.dm-close:hover { background: rgba(255,255,255,0.12); }
+
+
+.dm-to {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dm-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255, 255, 255, 0.06);
+  flex: 0 0 auto;
+}
+
+.dm-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated; /* เข้ากับ chibi */
+}
+
+.dm-to-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.dm-to-name {
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* ===== DM LINE DARK STYLE ===== */
+.dm-thread{
+  padding: 14px 12px;
+  display:flex;
+  flex-direction:column;
+  gap: 8px;
+  height: 100%;
+}
+
+.dm-row{
+  display:flex;
+  align-items:flex-start;
+  gap: 10px;
+}
+
+.dm-row.me{
+  justify-content:flex-end;
+}
+
+.dm-avatar{
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  overflow:hidden;
+  flex: 0 0 auto;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+.dm-avatar img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+
+.dm-col{
+  display:flex;
+  flex-direction:column;
+  max-width: 78%;
+}
+
+.dm-name{
+  font-size: 12px;
+  opacity: .85;
+  margin-bottom: 6px;
+}
+
+.dm-bubble-wrap{
+  display:flex;
+  flex-direction:row;
+  gap: 6px;
+}
+
+/* meta แถว Read/Time */
+.dm-meta{
+  font-size: 11px;
+  opacity: .6;
+  display:flex;
+  gap: 8px;
+  align-items:center;
+}
+.dm-meta.me{
+  justify-content:flex-end; /* ให้อยู่ชิดขวาเหมือนรูป */
+}
+.dm-meta.other{
+  justify-content:flex-start;
+  margin-left: 6px;
+}
+/* bubble */
+.dm-bubble{
+  padding: 4px 6px;
+  border-radius: 18px;
+  line-height: 1.35;
+  font-size: 14px;
+  word-break: break-word;
+}
+
+/* ฝั่งคนอื่น: เทา */
+.dm-bubble.other{
+  background: rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.92);
+  border-top-left-radius: 6px;
+}
+
+/* ฝั่งเรา: เขียว */
+.dm-bubble.me{
+  background: #22c55e;
+  color: #0b1220;
+  border-top-right-radius: 6px;
+}
+
+/* อนุญาตให้เลือกข้อความใน DM */
+.dm-bubble,
+.dm-name,
+.dm-meta {
+  user-select: text;
+  -webkit-user-select: text;
+  -ms-user-select: text;
+  cursor: text;
 }

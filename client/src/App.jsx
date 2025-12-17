@@ -19,6 +19,9 @@ import {
   XCircle,
   Hand,
   Lock,
+  MessageCircle,
+  Footprints,
+  GitPullRequestArrow,
 } from "lucide-react";
 
 const TOKEN_ENDPOINT =
@@ -980,8 +983,10 @@ export default function App() {
             ...prev,
             {
               sender: data.senderName || senderId,
+              senderId, // ✅ เพิ่ม
+              targetId: data.target, // ✅ เพิ่ม (สำหรับ private = คนที่ถูกส่งหา)
               text: data.text,
-              type: data.scope,
+              type: data.scope, // "private" | "global" | "room"
               timestamp: Date.now(),
             },
           ]);
@@ -1409,8 +1414,10 @@ export default function App() {
       ...prev,
       {
         sender: displayName,
+        senderId: identity, // ✅ เพิ่ม
+        targetId: target, // ✅ เพิ่ม (ตอน private target = dmTarget)
         text: chatInput,
-        type: scope,
+        type: scope, // "private" | "global" | "room"
         timestamp: Date.now(),
       },
     ]);
@@ -1691,12 +1698,71 @@ export default function App() {
   const displayMessages = chatMessages.filter((msg) => {
     if (activeTab === "global") return msg.type === "global";
     if (activeTab === "room") return msg.type === "room";
-    if (activeTab === "dm") return msg.type === "private";
+     if (activeTab === "dm") {
+    if (msg.type !== "private") return false;
+    if (!dmTarget) return false;
+
+    const a = msg.senderId;
+    const b = msg.targetId;
+
+    // ✅ เก็บเฉพาะบทสนทนา: me <-> dmTarget
+    return (
+      (a === identity && b === dmTarget) ||
+      (a === dmTarget && b === identity)
+    );
+  }
     return false;
   });
 
   const getStatusColor = (s) =>
     s === "Do Not Disturb" ? "#ef4444" : s === "Busy" ? "#f59e0b" : "#22c55e";
+
+  const isDM = activeTab === "dm";
+const formatTime = (ts) =>
+  new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+const renderDM = () => (
+  <div className="dm-thread">
+    {displayMessages.map((msg, i) => {
+      const isMe = msg.senderId === identity; // ใช้ senderId จะชัวร์กว่า sender name
+      const avatar = isMe ? myAvatar : (otherPlayers[msg.senderId]?.a || AVATARS[0]);
+      const name = isMe ? "You" : (otherPlayers[msg.senderId]?.n || msg.sender);
+
+      return (
+        <div key={i} className={`dm-row ${isMe ? "me" : "other"}`}>
+          {!isMe && (
+            <div className="dm-avatar">
+              <img src={avatar} alt="avatar" />
+            </div>
+          )}
+
+          <div className="dm-col">
+            {!isMe && <div className="dm-name">{name}</div>}
+
+            <div className="dm-bubble-wrap">
+              {isMe && (
+                <div className="dm-meta me">
+                  <span className="dm-time">{formatTime(msg.timestamp)}</span>
+                </div>
+              )}
+
+              <div className={`dm-bubble ${isMe ? "me" : "other"}`}>
+                {msg.text}
+              </div>
+
+              {!isMe && (
+                <div className="dm-meta other">
+                  <span className="dm-time">{formatTime(msg.timestamp)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    })}
+    <div ref={chatEndRef} />
+  </div>
+);
 
   return (
     <div
@@ -1885,7 +1951,7 @@ export default function App() {
           {summonRequest && myAvailability !== "Do Not Disturb" && (
             <div className="summon-toast">
               <div>
-                <Hand size={16} /> <b>{summonRequest.requester}</b> calls!
+                <b>{summonRequest.requester}</b> request follow !
               </div>
               <div className="summon-actions">
                 <div
@@ -1968,20 +2034,6 @@ export default function App() {
                 onClick={() => setActiveTab("members")}
               >
                 Members
-              </div>
-              <div
-                className={`panel-tab ${
-                  activeTab === "global" ? "active" : ""
-                }`}
-                onClick={() => setActiveTab("global")}
-              >
-                Global
-              </div>
-              <div
-                className={`panel-tab ${activeTab === "room" ? "active" : ""}`}
-                onClick={() => setActiveTab("room")}
-              >
-                Room
               </div>
               <div
                 className={`panel-tab ${activeTab === "dm" ? "active" : ""}`}
@@ -2086,7 +2138,7 @@ export default function App() {
                                   setSelectedMemberId(null);
                                 }}
                               >
-                                <span>👣</span> Walk to
+                                <Footprints size={16} /> Walk to
                               </button>
                               <button
                                 className="menu-action-btn"
@@ -2095,8 +2147,8 @@ export default function App() {
                                   sendSummon(m.id);
                                 }}
                               >
-                                <Hand size={14} />
-                                <span>Summon</span>
+                                <GitPullRequestArrow size={16} />
+                                <span>Request to me</span>
                               </button>
                               <button
                                 className="menu-action-btn"
@@ -2107,7 +2159,7 @@ export default function App() {
                                   setSelectedMemberId(null);
                                 }}
                               >
-                                <span>💬</span> Message
+                                <MessageCircle size={16} /> Message
                               </button>
                               {!m.micMuted && canHear(m.id) && (
                                 <button
@@ -2132,9 +2184,19 @@ export default function App() {
                 <div className="chat-container">
                   {activeTab === "dm" && dmTarget && (
                     <div className="dm-target-info">
-                      <span>
-                        To: <b>{otherPlayers[dmTarget]?.n || dmTarget}</b>
-                      </span>
+                      <div className="dm-to">
+                        <div className="dm-avatar">
+                          <img
+                            src={otherPlayers[dmTarget]?.a || AVATARS[0]}
+                            alt="to"
+                          />
+                        </div>
+                        <div className="dm-to-text">
+                          <div className="dm-to-name">
+                            {otherPlayers[dmTarget]?.n || dmTarget}
+                          </div>
+                        </div>
+                      </div>
                       <span
                         className="dm-close"
                         onClick={() => setDmTarget(null)}
@@ -2143,22 +2205,31 @@ export default function App() {
                       </span>
                     </div>
                   )}
-                  <div className="chat-messages">
-                    {displayMessages.map((msg, i) => (
-                      <div
-                        key={i}
-                        className={`chat-msg ${
-                          msg.sender === displayName ? "me" : ""
-                        } ${msg.type}`}
-                      >
-                        {msg.icon === "approved" && <CheckCircle2 size={14} />}
-                        {msg.icon === "denied" && <XCircle size={14} />}
-                        <b>{msg.sender}</b>
-                        {msg.text}
-                      </div>
-                    ))}
+                  {renderDM()}
+                  {/* <div className={`chat-messages ${isDM ? "dm" : ""}`}>
+                    {displayMessages.map((msg, i) => {
+                      const isMe = msg.sender === displayName;
+                      const isSystem = msg.sender === "System";
+
+                      return (
+                        <div
+                          key={i}
+                          className={[
+                            "chat-msg",
+                            msg.type,
+                            isDM ? "dm" : "",
+                            isMe ? "me" : "",
+                            isSystem ? "system" : "",
+                          ].join(" ")}
+                          data-time={formatTime(msg.timestamp)}
+                        >
+                          
+                          <div className="text">{msg.text}</div>
+                        </div>
+                      );
+                    })}
                     <div ref={chatEndRef} />
-                  </div>
+                  </div> */}
                   <div className="chat-input-area">
                     <input
                       className="chat-input"
