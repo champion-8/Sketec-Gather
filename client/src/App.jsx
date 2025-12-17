@@ -12,10 +12,20 @@ import {
   Volume2,
   Settings,
   Users,
+  DoorOpen,
+  DoorClosed,
+  BellRing,
+  CheckCircle2,
+  XCircle,
+  Hand,
+  Lock,
 } from "lucide-react";
 
 const TOKEN_ENDPOINT =
   import.meta.env.VITE_TOKEN_ENDPOINT || "http://localhost:3001/livekit/token";
+const MUTE_MIC_ENDPOINT =
+  import.meta.env.VITE_MUTE_MIC_ENDPOINT ||
+  "http://localhost:3001/livekit/mute-mic";
 const LIVEKIT_URL = import.meta.env.VITE_LIVEKIT_URL;
 
 const MAP_WIDTH = 2670;
@@ -45,6 +55,11 @@ const AVATARS = [
   "https://static.vecteezy.com/system/resources/thumbnails/051/135/766/small/stylized-cartoon-ninja-character-illustration-free-png.png",
   "https://png.pngtree.com/png-vector/20250609/ourmid/pngtree-3d-chibi-dragon-knight-character-png-image_16401585.png",
   "https://png.pngtree.com/png-vector/20241009/ourmid/pngtree-cute-chibi-costume-dragon-png-image_14042529.png",
+  "https://png.pngtree.com/png-clipart/20240806/original/pngtree-teacher-chibi-3d-transparent-png-image_15714206.png",
+  "https://static.vecteezy.com/system/resources/previews/033/494/475/non_2x/cute-chibi-school-girl-ai-generative-png.png",
+  "https://static.vecteezy.com/system/resources/thumbnails/033/494/737/small/cute-chibi-school-girl-ai-generative-png.png",
+  "https://static.vecteezy.com/system/resources/thumbnails/033/494/777/small/cute-chibi-girl-wearing-a-cat-hoodie-ai-generative-png.png",
+  "https://png.pngtree.com/png-vector/20240506/ourmid/pngtree-cute-chibi-girl-manga-characters-png-image_12368178.png",
 ];
 
 const ZONES = [
@@ -144,14 +159,6 @@ const ZONES = [
 const OBSTACLES = [
   { id: "wall-top", x: 0, y: 0, w: 2000, h: 80 },
   { id: "wall-bottom", x: 0, y: 1910, w: 2000, h: 90 },
-  // { id: 'wall-1-1', x: 0, y: 750, w: 220, h: 10 },
-  // { id: 'wall-1-2', x: 280, y: 750, w: 100, h: 10 },
-  // { id: 'wall-1-3', x: 650, y: 750, w: 130, h: 10 },
-  // { id: 'wall-1-4', x: 220, y: 550, w: 10, h: 210 },
-  // { id: 'wall-1-5', x: 280, y: 210, w: 10, h: 540 },
-  // { id: 'wall-1-6', x: 780, y: 80, w: 10, h: 680 },
-  // { id: 'wall-1-7', x: 280, y: 200, w: 500, h: 10 },
-  // { id: 'tree-1', x: 1130, y: 680, w: 230, h: 220 },
 ];
 
 const STATUS_OPTIONS = [
@@ -190,7 +197,7 @@ function getRandomSpawn() {
 }
 
 function hasLineOfSight(a, b) {
-  const step = 10; // ยิ่งเล็กยิ่งแม่น แต่ช้าขึ้น
+  const step = 10;
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const dist = Math.hypot(dx, dy);
@@ -276,17 +283,18 @@ function findPath(startX, startY, endX, endY) {
       return path.reverse();
     }
     closedList.push(current);
+
     const neighbors = [
       { x: current.x + 1, y: current.y, cost: 1 },
       { x: current.x - 1, y: current.y, cost: 1 },
       { x: current.x, y: current.y + 1, cost: 1 },
       { x: current.x, y: current.y - 1, cost: 1 },
-
       { x: current.x + 1, y: current.y + 1, cost: Math.SQRT2 },
       { x: current.x + 1, y: current.y - 1, cost: Math.SQRT2 },
       { x: current.x - 1, y: current.y + 1, cost: Math.SQRT2 },
       { x: current.x - 1, y: current.y - 1, cost: Math.SQRT2 },
     ];
+
     for (let neighbor of neighbors) {
       if (
         neighbor.x < 0 ||
@@ -298,6 +306,7 @@ function findPath(startX, startY, endX, endY) {
       if (grid[neighbor.y][neighbor.x] === 1) continue;
       if (closedList.find((n) => n.x === neighbor.x && n.y === neighbor.y))
         continue;
+
       let tentativeG = current.g + neighbor.cost;
       let existing = openList.find(
         (n) => n.x === neighbor.x && n.y === neighbor.y
@@ -313,6 +322,51 @@ function findPath(startX, startY, endX, endY) {
   return [];
 }
 
+function getNearestOutsidePointOnZoneEdge(x, y, zone, margin = 18) {
+  const left = zone.x;
+  const right = zone.x + zone.w;
+  const top = zone.y;
+  const bottom = zone.y + zone.h;
+
+  const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+
+  const candidates = [
+    { edge: "left", x: left - margin, y: clamp(y, top, bottom) },
+    { edge: "right", x: right + margin, y: clamp(y, top, bottom) },
+    { edge: "top", x: clamp(x, left, right), y: top - margin },
+    { edge: "bottom", x: clamp(x, left, right), y: bottom + margin },
+  ];
+
+  candidates.sort(
+    (a, b) => getDistance({ x, y }, a) - getDistance({ x, y }, b)
+  );
+  return candidates[0];
+}
+
+function clampOutsideLocked(x, y, myId, isZoneLocked, isAllowedInZone) {
+  const z = checkZone(x, y);
+  if (z?.id && isZoneLocked(z.id) && !isAllowedInZone(z.id, myId)) {
+    // ดันออกไปขอบนอกห้องแทน
+    const outside = getNearestOutsidePointOnZoneEdge(x, y, z, 24); // margin 24 แนะนำเพิ่มนิด
+    return { x: outside.x, y: outside.y, blocked: true };
+  }
+  return { x, y, blocked: false };
+}
+
+function forceKickOutsideZone(pos, zone) {
+  const outside = getNearestOutsidePointOnZoneEdge(
+    pos.x,
+    pos.y,
+    zone,
+    28 // margin กันติดขอบ
+  );
+
+  return {
+    x: outside.x,
+    y: outside.y,
+  };
+}
+
 const VideoRenderer = ({
   track,
   participantId,
@@ -324,13 +378,11 @@ const VideoRenderer = ({
   const videoRef = useRef(null);
   useEffect(() => {
     const el = videoRef.current;
-    if (track && el) {
-      track.attach(el);
-    }
+    if (track && el) track.attach(el);
     return () => {
       if (track && el) {
         track.detach(el);
-        el.srcObject = null; // Important: Clear source to prevent frozen frame
+        el.srcObject = null;
       }
     };
   }, [track]);
@@ -358,6 +410,14 @@ const VideoRenderer = ({
 };
 
 export default function App() {
+  const REQUEST_TTL_MS = 20000;
+
+  const [requestCountdown, setRequestCountdown] = useState(0);
+  const requestTimerRef = useRef(null);
+
+  const [knock, setKnock] = useState(false);
+  const knockTimerRef = useRef(null);
+
   const [joined, setJoined] = useState(false);
   const [inputName, setInputName] = useState("");
   const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0]);
@@ -372,18 +432,222 @@ export default function App() {
   const [myZone, setMyZone] = useState(null);
   const [myAvatar, setMyAvatar] = useState(selectedAvatar);
 
-  // Status State
   const [myAvailability, setMyAvailability] = useState("Available");
   const [myStatusText, setMyStatusText] = useState("");
 
   const [otherPlayers, setOtherPlayers] = useState({});
   const [speakingIds, setSpeakingIds] = useState([]);
 
-  const pinchRef = useRef({
-    active: false,
-    startDist: 0,
-    startZoom: 1,
-  });
+  const [lockedZones, setLockedZones] = useState({});
+  const lockedZonesRef = useRef({});
+  useEffect(() => {
+    lockedZonesRef.current = lockedZones;
+  }, [lockedZones]);
+
+  const [joinRequests, setJoinRequests] = useState([]);
+  const pendingEnterRef = useRef(null); // { zoneId, x, y }
+
+  const pinchRef = useRef({ active: false, startDist: 0, startZoom: 1 });
+
+  const roomRef = useRef(null);
+  const audioTracksRef = useRef({});
+  const posRef = useRef(initialPos);
+  const targetRef = useRef(initialPos);
+  const pathRef = useRef([]);
+  const facingRef = useRef("right");
+  const isMovingRef = useRef(false);
+  const micOnRef = useRef(true);
+  const markerIdRef = useRef(0);
+  const followingRef = useRef(null);
+  const otherPlayersRef = useRef({});
+  const isGhostRef = useRef(false);
+  const requestTokenRef = useRef(0);
+
+  const stopJoinRequestTimers = () => {
+    if (requestTimerRef.current) {
+      clearInterval(requestTimerRef.current);
+      requestTimerRef.current = null;
+    }
+    if (knockTimerRef.current) {
+      clearTimeout(knockTimerRef.current);
+      knockTimerRef.current = null;
+    }
+    setRequestCountdown(0);
+    setKnock(false);
+  };
+
+  // ✅ cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (requestTimerRef.current) {
+        clearInterval(requestTimerRef.current);
+        requestTimerRef.current = null;
+      }
+      if (knockTimerRef.current) {
+        clearTimeout(knockTimerRef.current);
+        knockTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const publishReliable = async (msg) => {
+    if (!roomRef.current) return;
+    await roomRef.current.localParticipant.publishData(
+      new TextEncoder().encode(JSON.stringify(msg)),
+      { reliable: true }
+    );
+  };
+
+  const setZoneLockState = async (zoneId, locked) => {
+    const allowed = new Set();
+
+    if (locked) {
+      allowed.add(identity);
+      Object.entries(otherPlayersRef.current).forEach(([pid, p]) => {
+        if (p?.z === zoneId) allowed.add(pid);
+      });
+    }
+
+    const next = {
+      ...(lockedZonesRef.current || {}),
+      [zoneId]: {
+        locked,
+        by: displayName,
+        byId: identity,
+        allowedIds: locked ? Array.from(allowed) : [],
+        ts: Date.now(),
+      },
+    };
+
+    setLockedZones(next);
+
+    await publishReliable({
+      type: "zone_lock",
+      zoneId,
+      state: next[zoneId],
+    });
+
+    // 🔴 ถ้าตัวเราอยู่ในห้องนี้ แต่ไม่ได้อยู่ใน allowedIds → ดีดออก
+    const z = myZone;
+    if (
+      locked &&
+      z?.id === zoneId &&
+      !next[zoneId].allowedIds.includes(identity)
+    ) {
+      const kicked = forceKickOutsideZone(posRef.current, z);
+
+      posRef.current = kicked;
+      targetRef.current = kicked;
+      pathRef.current = [];
+      setMyPos({ ...kicked });
+    }
+  };
+
+  const cancelJoinRequest = async (zoneId) => {
+    await publishReliable({
+      type: "zone_join_cancel",
+      zoneId,
+      requesterId: identity,
+    });
+  };
+
+  const requestJoinZone = async (zoneId, x, y) => {
+    pendingEnterRef.current = { zoneId, x, y };
+
+    // เคลียร์ของเก่าก่อนเริ่มใหม่
+    stopJoinRequestTimers();
+
+    // token กัน interval เก่าค้าง
+    const myToken = ++requestTokenRef.current;
+
+    // เคาะประตู 1.2s
+    setKnock(true);
+    knockTimerRef.current = setTimeout(() => setKnock(false), 1200);
+
+    // countdown
+    setRequestCountdown(Math.ceil(REQUEST_TTL_MS / 1000));
+    const startedAt = Date.now();
+
+    // ✅ เก็บ intervalId แบบ local เพื่อ clear "ตัวเอง"
+    const intervalId = setInterval(async () => {
+      // ถ้าไม่ใช่ request ล่าสุด ให้หยุด interval ตัวนี้ทันที
+      if (requestTokenRef.current !== myToken) {
+        clearInterval(intervalId);
+        return;
+      }
+
+      const left = REQUEST_TTL_MS - (Date.now() - startedAt);
+      const sec = Math.max(0, Math.ceil(left / 1000));
+      setRequestCountdown(sec);
+
+      if (left <= 0) {
+        // invalidate + stop
+        requestTokenRef.current++;
+        clearInterval(intervalId);
+
+        // เฉพาะถ้า interval นี้คืออันล่าสุดค่อยล้าง ref
+        if (requestTimerRef.current === intervalId) {
+          requestTimerRef.current = null;
+        }
+
+        stopJoinRequestTimers();
+        pendingEnterRef.current = null;
+
+        await cancelJoinRequest(zoneId);
+
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            sender: "System",
+            text: `⌛ Request timed out.`,
+            type: "global",
+            timestamp: Date.now(),
+          },
+        ]);
+      }
+    }, 250);
+
+    // ✅ เก็บ ref ของ "อันล่าสุด"
+    requestTimerRef.current = intervalId;
+
+    await publishReliable({
+      type: "zone_join_req",
+      zoneId,
+      requesterId: identityRef.current, // ✅ ใช้ ref
+      requesterName: displayNameRef.current, // ✅ ใช้ ref
+    });
+  };
+
+  const respondJoinZone = async (zoneId, requesterId, ok) => {
+    await publishReliable({
+      type: "zone_join_resp",
+      zoneId,
+      requesterId,
+      ok,
+      approverId: identityRef.current,
+      approverName: displayNameRef.current,
+    });
+
+    if (ok) {
+      const cur = lockedZonesRef.current?.[zoneId];
+      if (cur?.locked) {
+        const allowed = new Set(cur.allowedIds || []);
+        allowed.add(requesterId);
+
+        const next = {
+          ...lockedZonesRef.current,
+          [zoneId]: { ...cur, allowedIds: Array.from(allowed) },
+        };
+        setLockedZones(next);
+
+        await publishReliable({
+          type: "zone_lock",
+          zoneId,
+          state: next[zoneId],
+        });
+      }
+    }
+  };
 
   const getTouchDist = (t1, t2) => {
     const dx = t2.clientX - t1.clientX;
@@ -395,11 +659,7 @@ export default function App() {
     if (e.touches.length === 2) {
       e.preventDefault();
       const dist = getTouchDist(e.touches[0], e.touches[1]);
-      pinchRef.current = {
-        active: true,
-        startDist: dist,
-        startZoom: zoom,
-      };
+      pinchRef.current = { active: true, startDist: dist, startZoom: zoom };
     }
   };
 
@@ -417,12 +677,39 @@ export default function App() {
   };
 
   const handleTouchEnd = (e) => {
-    if (e.touches.length < 2) {
-      pinchRef.current.active = false;
-    }
+    if (e.touches.length < 2) pinchRef.current.active = false;
   };
 
-  // Initial Zoom OUT (60%)
+  const muteOtherForEveryone = async (targetId, muted = true) => {
+    // ✅ กติกา: ปิดได้เฉพาะคนที่ "คุยกันได้"
+    if (!canHear(targetId)) {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          sender: "System",
+          text: "🔇 You can mute only nearby / same room users.",
+          type: "global",
+          timestamp: Date.now(),
+        },
+      ]);
+      return;
+    }
+
+    await publishReliable({
+      type: "force_mute",
+      targetId: targetId,
+    });
+    // await fetch(MUTE_MIC_ENDPOINT, {
+    //   method: "POST",
+    //   headers: { "Content-Type": "application/json" },
+    //   body: JSON.stringify({
+    //     roomName: "OfficeMap",
+    //     targetIdentity: targetId,
+    //     muted,
+    //   }),
+    // });
+  };
+
   const [zoom, setZoom] = useState(0.6);
   const [viewport, setViewport] = useState({
     w: window.innerWidth,
@@ -436,9 +723,9 @@ export default function App() {
   const [selectedMemberId, setSelectedMemberId] = useState(null);
   const [dmTarget, setDmTarget] = useState(null);
   const [summonRequest, setSummonRequest] = useState(null);
+  const [joinResult, setJoinResult] = useState(null);
   const [followingId, setFollowingId] = useState(null);
   const [showStatusMenu, setShowStatusMenu] = useState(false);
-  const [tempStatusText, setTempStatusText] = useState("");
 
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
@@ -460,18 +747,21 @@ export default function App() {
   const [selectedMic, setSelectedMic] = useState("");
   const [selectedSpeaker, setSelectedSpeaker] = useState("");
 
-  const roomRef = useRef(null);
-  const audioTracksRef = useRef({});
-  const posRef = useRef(initialPos);
-  const targetRef = useRef(initialPos);
-  const pathRef = useRef([]);
-  const facingRef = useRef("right");
-  const isMovingRef = useRef(false);
-  const micOnRef = useRef(true);
-  const markerIdRef = useRef(0);
-  const followingRef = useRef(null);
-  const otherPlayersRef = useRef({});
-  const isGhostRef = useRef(false);
+  const identityRef = useRef(identity);
+  const displayNameRef = useRef(displayName);
+
+  useEffect(() => {
+    identityRef.current = identity;
+  }, [identity]);
+  useEffect(() => {
+    displayNameRef.current = displayName;
+  }, [displayName]);
+
+  useEffect(() => {
+    return () => {
+      stopJoinRequestTimers();
+    };
+  }, []);
 
   useEffect(() => {
     initGrid();
@@ -510,10 +800,8 @@ export default function App() {
     otherPlayersRef.current = otherPlayers;
   }, [otherPlayers]);
 
-  // Helper to remove video safely
-  const removeVideoTrack = (sid) => {
+  const removeVideoTrack = (sid) =>
     setVideoTracks((prev) => prev.filter((t) => t.id !== sid));
-  };
 
   const handleJoin = async () => {
     if (!inputName.trim()) return alert("Please enter your name");
@@ -528,6 +816,10 @@ export default function App() {
     setJoined(true);
     await connect(uid);
   };
+
+  const isZoneLocked = (zoneId) => !!lockedZonesRef.current?.[zoneId]?.locked;
+  const isAllowedInZone = (zoneId, pid) =>
+    !!lockedZonesRef.current?.[zoneId]?.allowedIds?.includes(pid);
 
   async function connect(userId) {
     try {
@@ -546,7 +838,6 @@ export default function App() {
         )
       );
 
-      // --- Handle Remote Tracks ---
       room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
         if (track.kind === Track.Kind.Audio) {
           const el = track.attach();
@@ -557,7 +848,6 @@ export default function App() {
           audioTracksRef.current[participant.identity] = { track, element: el };
         } else if (track.kind === Track.Kind.Video) {
           setVideoTracks((prev) => {
-            // Avoid duplicates
             if (prev.some((t) => t.id === track.sid)) return prev;
             return [
               ...prev,
@@ -573,17 +863,14 @@ export default function App() {
       });
 
       room.on(RoomEvent.TrackUnsubscribed, (track, pub, participant) => {
-        if (track.kind === Track.Kind.Audio) {
+        if (track?.kind === Track.Kind.Audio) {
           track.detach().forEach((el) => el.remove());
           delete audioTracksRef.current[participant.identity];
-        } else if (track.kind === Track.Kind.Video) {
-          // --- FIX: Use correct property name from event ---
-          // track might be null, use pub.trackSid
+        } else if (pub?.kind === Track.Kind.Video) {
           removeVideoTrack(pub.trackSid);
         }
       });
 
-      // --- Handle Local Tracks ---
       room.on(RoomEvent.LocalTrackPublished, (pub, participant) => {
         if (pub.kind === Track.Kind.Video) {
           const trackSid = pub.track.sid;
@@ -604,9 +891,7 @@ export default function App() {
 
       room.on(RoomEvent.LocalTrackUnpublished, (pub, participant) => {
         if (pub.kind === Track.Kind.Video) {
-          // Reliable removal using publication.trackSid
           removeVideoTrack(pub.trackSid);
-
           if (pub.source === Track.Source.Camera) setCamOn(false);
           if (pub.source === Track.Source.ScreenShare) setScreenOn(false);
         }
@@ -614,9 +899,7 @@ export default function App() {
 
       room.on(RoomEvent.TrackMuted, (pub, participant) => {
         if (pub.source === Track.Source.Camera) {
-          // Reliable removal using publication.trackSid
           removeVideoTrack(pub.trackSid);
-
           if (participant.isLocal && pub.source === Track.Source.Camera)
             setCamOn(false);
         }
@@ -624,7 +907,6 @@ export default function App() {
 
       room.on(RoomEvent.TrackUnmuted, (pub, participant) => {
         if (pub.source === Track.Source.Camera) {
-          // แสดงกลับ
           const trackSid = pub.track.sid;
           setVideoTracks((prev) => {
             if (prev.some((t) => t.id === trackSid)) return prev;
@@ -641,12 +923,21 @@ export default function App() {
         }
       });
 
-      room.on(RoomEvent.DataReceived, (payload, participant) => {
-        const data = JSON.parse(new TextDecoder().decode(payload));
+      room.on(RoomEvent.DataReceived, async (payload, participant) => {
+        let data;
+        try {
+          data = JSON.parse(new TextDecoder().decode(payload));
+        } catch {
+          return;
+        }
+
+        const senderId = participant?.identity || data.senderId || "unknown";
+
         if (data.type === "move") {
+          if (senderId === "unknown") return;
           setOtherPlayers((prev) => ({
             ...prev,
-            [participant.identity]: {
+            [senderId]: {
               x: data.x,
               y: data.y,
               f: data.f,
@@ -659,8 +950,24 @@ export default function App() {
               st: data.st,
             },
           }));
+
+          // ✅ host kick unauthorized เมื่อเห็นว่าเข้าไปในห้อง lock
+          const hostId = lockedZonesRef.current?.[data.z]?.byId;
+          const isHost = hostId && identityRef.current === hostId;
+
+          if (isHost && data.z) {
+            const lock = lockedZonesRef.current?.[data.z];
+            if (lock?.locked && !lock.allowedIds?.includes(senderId)) {
+              // ส่ง kick ไปหาเจ้าตัว
+              publishReliable({
+                type: "zone_kick",
+                targetId: senderId,
+                zoneId: data.z,
+              });
+            }
+          }
         } else if (data.type === "chat") {
-          if (data.scope === "private" && data.target !== userId) return;
+          if (data.scope === "private" && !senderId) return;
           if (
             data.scope === "room" &&
             data.target !== myZone?.id &&
@@ -668,28 +975,171 @@ export default function App() {
             myZone?.id
           )
             return;
+
           setChatMessages((prev) => [
             ...prev,
             {
-              sender: data.senderName || participant.identity,
+              sender: data.senderName || senderId,
               text: data.text,
               type: data.scope,
               timestamp: Date.now(),
             },
           ]);
+
           if (data.scope === "private") {
-            setDmTarget(participant.identity);
+            setDmTarget(senderId);
             setActiveTab("dm");
           }
         } else if (data.type === "summon" && data.targetId === userId) {
           setSummonRequest({
-            requester: data.requesterName || participant.identity,
-            requesterId: participant.identity,
+            requester: data.requesterName || senderId,
+            requesterId: senderId,
             x: data.x,
             y: data.y,
           });
+        } else if (data.type === "zone_lock") {
+          const { zoneId, state } = data;
+
+          lockedZonesRef.current = {
+            ...(lockedZonesRef.current || {}),
+            [zoneId]: state,
+          };
+          setLockedZones((prev) => ({ ...prev, [zoneId]: state }));
+
+          if (!state.locked) return;
+
+          const zone = ZONES.find((z) => z.id === zoneId);
+          if (!zone) return;
+
+          // 🔴 ตรวจตัวเราเอง
+          if (
+            myZone?.id === zoneId &&
+            !state.allowedIds.includes(identityRef.current)
+          ) {
+            const kicked = forceKickOutsideZone(posRef.current, zone);
+
+            posRef.current = kicked;
+            targetRef.current = kicked;
+            pathRef.current = [];
+            setMyPos({ ...kicked });
+          }
+
+          // 🔴 ตรวจ remote players
+          setOtherPlayers((prev) => {
+            const next = { ...prev };
+
+            Object.entries(next).forEach(([pid, p]) => {
+              if (p.z === zoneId && !state.allowedIds.includes(pid)) {
+                const kicked = forceKickOutsideZone({ x: p.x, y: p.y }, zone);
+                next[pid] = {
+                  ...p,
+                  x: kicked.x,
+                  y: kicked.y,
+                  z: null,
+                };
+              }
+            });
+
+            return next;
+          });
+        } else if (data.type === "zone_join_req") {
+          const { zoneId, requesterId, requesterName } = data;
+
+          // ✅ จำกัดเฉพาะ host ห้องกด Allow
+          const hostId = lockedZonesRef.current?.[zoneId]?.byId;
+          if (hostId && identityRef.current === hostId) {
+            setJoinRequests((prev) => {
+              if (
+                prev.some(
+                  (r) => r.zoneId === zoneId && r.requesterId === requesterId
+                )
+              )
+                return prev;
+              return [
+                ...prev,
+                { zoneId, requesterId, requesterName, ts: Date.now() },
+              ];
+            });
+          }
+        } else if (data.type === "zone_join_resp") {
+          const { zoneId, requesterId, ok } = data;
+
+          // ✅ ใช้ identityRef.current กัน stale
+          if (requesterId === identityRef.current) {
+            // ✅ invalidate + stop
+            requestTokenRef.current++;
+            stopJoinRequestTimers();
+
+            pendingEnterRef.current = null;
+
+            const zoneName = ZONES.find((z) => z.id === zoneId)?.name || zoneId;
+
+            // ✅ แสดงผลแบบ summon toast
+            setJoinResult({
+              ok,
+              zoneName,
+            });
+          }
+        } else if (data.type === "zone_join_cancel") {
+          const { zoneId, requesterId } = data;
+          setJoinRequests((prev) =>
+            prev.filter(
+              (r) => !(r.zoneId === zoneId && r.requesterId === requesterId)
+            )
+          );
+        } else if (data.type === "locks_sync") {
+          if (data.targetId !== identityRef.current) return;
+
+          const locks = data.locks || {};
+          lockedZonesRef.current = locks;
+          setLockedZones(locks);
+
+          // ถ้าเราดัน spawn อยู่ในห้องที่ lock และเราไม่ allowed → ดีดออกทันที
+          const z = checkZone(posRef.current.x, posRef.current.y);
+          if (
+            z?.id &&
+            locks[z.id]?.locked &&
+            !locks[z.id]?.allowedIds?.includes(identityRef.current)
+          ) {
+            const kicked = forceKickOutsideZone(posRef.current, z);
+            posRef.current = kicked;
+            targetRef.current = kicked;
+            pathRef.current = [];
+            setMyPos({ ...kicked });
+          }
+        } else if (data.type === "zone_kick") {
+          if (data.targetId !== identityRef.current) return;
+
+          const zone = ZONES.find((z) => z.id === data.zoneId);
+          if (!zone) return;
+
+          const kicked = forceKickOutsideZone(posRef.current, zone);
+          posRef.current = kicked;
+          targetRef.current = kicked;
+          pathRef.current = [];
+          setMyPos({ ...kicked });
+
+          setChatMessages((prev) => [
+            ...prev,
+            {
+              sender: "System",
+              text: `🚪 You were moved outside (room locked).`,
+              type: "global",
+              timestamp: Date.now(),
+            },
+          ]);
+        } else if (data.type === "force_mute") {
+          if (data.targetId !== identityRef.current) return;
+
+          // ปิดไมค์ตัวเอง
+          try {
+            await roomRef.current.localParticipant.setMicrophoneEnabled(false);
+            setMicOn(false);
+            micOnRef.current = false;
+          } catch {}
         }
       });
+
       room.on(RoomEvent.ParticipantDisconnected, (p) => {
         setOtherPlayers((prev) => {
           const next = { ...prev };
@@ -701,13 +1151,23 @@ export default function App() {
         );
       });
 
+      room.on(RoomEvent.ParticipantConnected, (p) => {
+        // ถ้าเราเป็นคนที่อยู่ก่อน (ทุกคนก็ส่งได้ แต่เอา host ส่งจะชัวร์)
+        // ส่งสถานะ lock ทั้งหมดให้คนที่เพิ่งเข้ามา
+        publishReliable({
+          type: "locks_sync",
+          targetId: p.identity,
+          locks: lockedZonesRef.current || {},
+        });
+      });
+
       await room.connect(LIVEKIT_URL, token);
-      await room.localParticipant.setMicrophoneEnabled(true, {
+      await room.localParticipant.setMicrophoneEnabled(false, {
         echoCancellation: true,
         noiseSuppression: true,
       });
-      micOnRef.current = true;
-      setMicOn(true);
+      micOnRef.current = false;
+      setMicOn(false);
       setConnected(true);
       await loadDevices();
     } catch (e) {
@@ -721,13 +1181,15 @@ export default function App() {
       const d = await navigator.mediaDevices.enumerateDevices();
       setAudioInputs(d.filter((x) => x.kind === "audioinput"));
       setAudioOutputs(d.filter((x) => x.kind === "audiooutput"));
-    } catch (e) {}
+    } catch {}
   };
+
   const handleMicChange = async (v) => {
     if (!roomRef.current) return;
     setSelectedMic(v);
     await roomRef.current.switchActiveDevice("audioinput", v);
   };
+
   const handleSpeakerChange = async (v) => {
     setSelectedSpeaker(v);
     if (roomRef.current)
@@ -737,6 +1199,7 @@ export default function App() {
         element.setSinkId(v).catch(console.error);
     });
   };
+
   const toggleMic = async () => {
     if (!roomRef.current) return;
     const t = !micOn;
@@ -747,16 +1210,12 @@ export default function App() {
     } catch {}
   };
 
-  // --- Video Toggles (Pure Event Driven) ---
   const toggleCam = async () => {
     if (!roomRef.current) return;
     const target = !camOn;
-
-    // We only call the API. The UI State (videoTracks) will be updated by
-    // LocalTrackPublished/Unpublished events to avoid race conditions.
     try {
       await roomRef.current.localParticipant.setCameraEnabled(target);
-      setCamOn(target); // Sync button state
+      setCamOn(target);
     } catch (e) {
       console.error("Cam toggle error", e);
     }
@@ -770,6 +1229,7 @@ export default function App() {
       setScreenOn(target);
     } catch (e) {
       console.error("Screen toggle error", e);
+      if (target) setScreenOn(false);
     }
   };
 
@@ -788,48 +1248,104 @@ export default function App() {
         });
     }
   };
+
   const handleMaximize = (id) =>
     setMaximizedTrackId((prev) => (prev === id ? null : id));
   const handleStatusChange = (s) => {
     setMyAvailability(s);
     setShowStatusMenu(false);
   };
-  // const handleCustomStatus = () => { setMyStatusText(tempStatusText); setTempStatusText(""); setShowStatusMenu(false); };
 
-  const handleWalkTo = useCallback((x, y, targetId = null) => {
-    followingRef.current = targetId;
-    setFollowingId(targetId);
-    if (x === undefined || y === undefined) return;
+  const [showRightPanelState, setShowRightPanelState] = useState(true); // (keep same behavior)
+  useEffect(() => {
+    setShowRightPanel(showRightPanelState);
+  }, [showRightPanelState]); // eslint-disable-line
 
-    if (isGhostRef.current) {
-      targetRef.current = { x, y };
-      pathRef.current = [];
-    } else {
-      const path = findPath(posRef.current.x, posRef.current.y, x, y);
-      const smooth = smoothPath(path);
-      if (smooth && smooth.length > 0) {
-        pathRef.current = smooth;
-        targetRef.current = smooth[0];
-      } else {
+  const handleWalkTo = useCallback(
+    (x, y, targetId = null) => {
+      followingRef.current = targetId;
+      setFollowingId(targetId);
+      if (x === undefined || y === undefined) return;
+
+      const targetZone = checkZone(x, y);
+      const zoneId = targetZone?.id;
+
+      if (
+        targetZone &&
+        isZoneLocked(zoneId) &&
+        !isAllowedInZone(zoneId, identity)
+      ) {
+        // 1) เดินไป "นอกขอบห้อง" (ไม่เข้า)
+        const outside = getNearestOutsidePointOnZoneEdge(x, y, targetZone, 18);
+
+        const path = findPath(
+          posRef.current.x,
+          posRef.current.y,
+          outside.x,
+          outside.y
+        );
+        const smooth = smoothPath(path);
+        if (smooth?.length) {
+          pathRef.current = smooth;
+          targetRef.current = smooth[0];
+        } else {
+          targetRef.current = { x: outside.x, y: outside.y };
+          pathRef.current = [];
+        }
+
+        // 2) ส่ง request (เหมือน summon) + เคาะประตู + countdown auto-cancel
+        requestJoinZone(zoneId, x, y);
+
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            sender: "System",
+            text: `🔒 "${
+              targetZone.name
+            }" is locked. Knocked & requested (${Math.ceil(
+              REQUEST_TTL_MS / 1000
+            )}s).`,
+            type: "global",
+            timestamp: Date.now(),
+          },
+        ]);
+        return;
+      }
+
+      if (isGhostRef.current) {
         targetRef.current = { x, y };
         pathRef.current = [];
+      } else {
+        const path = findPath(posRef.current.x, posRef.current.y, x, y);
+        const smooth = smoothPath(path);
+        if (smooth?.length) {
+          pathRef.current = smooth;
+          targetRef.current = smooth[0];
+        } else {
+          targetRef.current = { x, y };
+          pathRef.current = [];
+        }
       }
-    }
-    setClickMarker({ x, y, id: markerIdRef.current++ });
-    setSelectedMemberId(null);
-  }, []);
+
+      setClickMarker({ x, y, id: markerIdRef.current++ });
+      setSelectedMemberId(null);
+    },
+    [identity]
+  );
 
   const handleMapClick = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const worldX = (e.clientX - rect.left) / zoom;
     const worldY = (e.clientY - rect.top) / zoom;
+
+    setClickMarker({ x: worldX, y: worldY, id: markerIdRef.current++ });
     handleWalkTo(worldX, worldY, null);
   };
 
   const getMinZoom = useCallback(() => {
     const rightPanelW = showRightPanel ? 320 : 0;
     const usableW = viewport.w - rightPanelW;
-    const usableH = viewport.h - 80; // เผื่อ bottom bar
+    const usableH = viewport.h - 80;
     return Math.min(usableW / MAP_WIDTH, usableH / MAP_HEIGHT);
   }, [viewport.w, viewport.h, showRightPanel]);
 
@@ -862,7 +1378,7 @@ export default function App() {
       el.removeEventListener("touchmove", tm);
       el.removeEventListener("touchend", te);
     };
-  }, [zoom, getMinZoom, handleTouchStart, handleTouchMove]);
+  }, [zoom, getMinZoom]);
 
   const sendChat = async () => {
     if (!chatInput.trim() || !roomRef.current) return;
@@ -879,6 +1395,7 @@ export default function App() {
     }
     const msg = {
       type: "chat",
+      senderId: identity,
       text: chatInput,
       scope,
       target,
@@ -906,6 +1423,7 @@ export default function App() {
     if (p && p.s === "Do Not Disturb") return alert("User is Do Not Disturb");
     const msg = {
       type: "summon",
+      senderId: identity,
       targetId,
       x: posRef.current.x,
       y: posRef.current.y,
@@ -917,6 +1435,7 @@ export default function App() {
     );
     setSelectedMemberId(null);
   };
+
   const HEAR_DISTANCE = 600;
 
   const canHear = useCallback(
@@ -928,18 +1447,15 @@ export default function App() {
       const myZoneId = myZone?.id || null;
       const otherZoneId = other.z || null;
 
-      // อยู่โซนเดียวกัน -> ได้ยิน
       if (myZoneId && otherZoneId && myZoneId === otherZoneId) return true;
-
-      // ถ้าคนใดคนหนึ่งอยู่ในโซน แต่ไม่ใช่โซนเดียวกัน -> ไม่ได้ยิน
       if (myZoneId || otherZoneId) return false;
 
-      // ทั้งคู่ Lobby -> วัดระยะ
       const dist = getDistance(posRef.current, other);
       return dist <= HEAR_DISTANCE;
     },
     [identity, myZone]
   );
+
   const isParticipantVisible = (targetId) => {
     if (targetId === identity) return true;
     const other = otherPlayers[targetId];
@@ -969,6 +1485,7 @@ export default function App() {
           setFollowingId(null);
         }
       }
+
       let currentTarget = targetRef.current;
       const dx = currentTarget.x - posRef.current.x;
       const dy = currentTarget.y - posRef.current.y;
@@ -986,29 +1503,45 @@ export default function App() {
       } else if (pathRef.current.length > 0) {
         targetRef.current = pathRef.current.shift();
       } else {
-        posRef.current.x = currentTarget.x;
-        posRef.current.y = currentTarget.y;
+        const guarded = clampOutsideLocked(
+          currentTarget.x,
+          currentTarget.y,
+          identity,
+          isZoneLocked,
+          isAllowedInZone
+        );
+
+        posRef.current.x = guarded.x;
+        posRef.current.y = guarded.y;
+
+        if (guarded.blocked) {
+          targetRef.current = { ...posRef.current };
+          pathRef.current = [];
+        }
       }
 
       if (isMoving) {
-        // let nextX = posRef.current.x + moveX; let nextY = posRef.current.y + moveY;
-        // let cx = false, cy = false;
+        let nextX = posRef.current.x + moveX;
+        let nextY = posRef.current.y + moveY;
 
-        // if (!isGhostRef.current) {
-        //     if (checkObstacle(nextX, posRef.current.y)) cx = true;
-        //     if (checkObstacle(posRef.current.x, nextY)) cy = true;
-        //     Object.values(otherPlayersRef.current).forEach(p => {
-        //       if (getDistance(posRef.current, p) < 10) return;
-        //       if (getDistance({x: nextX, y: posRef.current.y}, p) < COLLISION_RADIUS) cx = true;
-        //       if (getDistance({x: posRef.current.x, y: nextY}, p) < COLLISION_RADIUS) cy = true;
-        //     });
-        // }
-        // if (cx) moveX = 0; if (cy) moveY = 0;
-        // if (isGhostRef.current || !checkObstacle(posRef.current.x + moveX, posRef.current.y + moveY)) {
-        //   posRef.current.x += moveX; posRef.current.y += moveY;
-        // }
-        posRef.current.x += moveX;
-        posRef.current.y += moveY;
+        const guarded = clampOutsideLocked(
+          nextX,
+          nextY,
+          identity,
+          isZoneLocked,
+          isAllowedInZone
+        );
+        if (guarded.blocked) {
+          // หยุดที่ขอบนอก (ไม่เข้าห้อง)
+          posRef.current.x = guarded.x;
+          posRef.current.y = guarded.y;
+          targetRef.current = { ...posRef.current };
+          pathRef.current = [];
+          return;
+        }
+
+        posRef.current.x = guarded.x;
+        posRef.current.y = guarded.y;
       }
 
       const z = checkZone(posRef.current.x, posRef.current.y);
@@ -1019,6 +1552,7 @@ export default function App() {
 
       const data = JSON.stringify({
         type: "move",
+        senderId: identity,
         x: posRef.current.x,
         y: posRef.current.y,
         f: facingRef.current,
@@ -1030,11 +1564,13 @@ export default function App() {
         s: myAvailability,
         st: myStatusText,
       });
+
       roomRef.current?.localParticipant.publishData(
         new TextEncoder().encode(data),
         { reliable: false }
       );
     }, 30);
+
     return () => clearInterval(loop);
   }, [
     connected,
@@ -1047,6 +1583,12 @@ export default function App() {
   ]);
 
   useEffect(() => {
+    if (!joinResult) return;
+    const t = setTimeout(() => setJoinResult(null), 2000);
+    return () => clearTimeout(t);
+  }, [joinResult]);
+
+  useEffect(() => {
     if (!connected) return;
 
     Object.keys(otherPlayers).forEach((pid) => {
@@ -1054,9 +1596,8 @@ export default function App() {
       const obj = audioTracksRef.current[pid];
       if (!obj) return;
 
-      // mute เงื่อนไขพิเศษ
       if (
-        other.m || // เขาปิดไมค์
+        other.m ||
         myAvailability === "Do Not Disturb" ||
         other.s === "Do Not Disturb"
       ) {
@@ -1064,20 +1605,17 @@ export default function App() {
         return;
       }
 
-      // ได้ยินเฉพาะ ใกล้กัน หรือ โซนเดียวกัน
       if (!canHear(pid)) {
         obj.track.setVolume(0);
         return;
       }
 
-      // ถ้าโซนเดียวกัน ให้เต็ม
       const myZoneId = myZone?.id || null;
       if (myZoneId && other.z && myZoneId === other.z) {
         obj.track.setVolume(1);
         return;
       }
 
-      // ถ้า Lobby ใกล้ๆ ค่อยไล่ระดับ
       const MAX = 600,
         MIN = 100;
       const dist = getDistance(posRef.current, other);
@@ -1111,6 +1649,7 @@ export default function App() {
       x: myPos.x,
       y: myPos.y,
       zoneId: myZone?.id,
+      micMuted: !micOn,
     },
     ...Object.entries(otherPlayers).map(([id, d]) => ({
       id,
@@ -1123,8 +1662,10 @@ export default function App() {
       x: d.x,
       y: d.y,
       zoneId: d.z,
+      micMuted: !!d.m,
     })),
   ];
+
   const groupedMembers = allMembers.reduce((acc, m) => {
     let key = "Lobby";
     if (m.zoneId) key = ZONES.find((z) => z.id === m.zoneId)?.name || "Unknown";
@@ -1134,6 +1675,7 @@ export default function App() {
     acc[key].push(m);
     return acc;
   }, {});
+
   const sortedKeys = Object.keys(groupedMembers).sort((a, b) =>
     a.includes("Nearby")
       ? -1
@@ -1217,6 +1759,7 @@ export default function App() {
                 }}
               />
             )}
+
             {ZONES.map((z) => (
               <div
                 key={z.id}
@@ -1237,6 +1780,7 @@ export default function App() {
                 </div>
               </div>
             ))}
+
             {clickMarker && (
               <div
                 key={clickMarker.id}
@@ -1261,6 +1805,7 @@ export default function App() {
               </div>
               {!micOn && <div className="mute-icon">🔇</div>}
             </div>
+
             {Object.entries(otherPlayers).map(([pid, d]) => {
               const isHidden = d.z && d.z !== myZone?.id;
               const isSpeaking = speakingIds.includes(pid);
@@ -1310,10 +1855,37 @@ export default function App() {
               <span>👣</span> Following...
             </div>
           )}
+
+          {requestCountdown > 0 && (
+            <div className="summon-toast">
+              <Lock size={18} />
+              <div>
+                <b>Room is locked. Request expires in {requestCountdown} s</b>
+              </div>
+            </div>
+          )}
+
+          {joinResult && (
+            <div className="summon-toast">
+              <div>
+                {joinResult.ok ? "✅" : "❌"}{" "}
+                {joinResult.ok ? (
+                  <>
+                    You are allowed to enter <b>{joinResult.zoneName}</b>
+                  </>
+                ) : (
+                  <>
+                    Request to enter <b>{joinResult.zoneName}</b> was denied
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           {summonRequest && myAvailability !== "Do Not Disturb" && (
             <div className="summon-toast">
               <div>
-                👋 <b>{summonRequest.requester}</b> calls!
+                <Hand size={16} /> <b>{summonRequest.requester}</b> calls!
               </div>
               <div className="summon-actions">
                 <div
@@ -1339,6 +1911,44 @@ export default function App() {
             </div>
           )}
 
+          {joinRequests.length > 0 && (
+            <div className="summon-toast">
+              <div>
+                <b>Room join requests</b>
+              </div>
+              {joinRequests.slice(0, 3).map((r) => (
+                <div key={r.zoneId + r.requesterId} style={{ marginTop: 6 }}>
+                  <Users size={16} /> <b>{r.requesterName}</b> wants to enter{" "}
+                  <b>
+                    {ZONES.find((z) => z.id === r.zoneId)?.name || r.zoneId}
+                  </b>
+                  <div className="summon-actions">
+                    <div
+                      className="btn-accept"
+                      onClick={() => {
+                        respondJoinZone(r.zoneId, r.requesterId, true);
+                        setJoinRequests((prev) => prev.filter((x) => x !== r));
+                      }}
+                    >
+                      <CheckCircle2 size={16} />
+                      <span>Allow</span>
+                    </div>
+                    <div
+                      className="btn-ignore"
+                      onClick={() => {
+                        respondJoinZone(r.zoneId, r.requesterId, false);
+                        setJoinRequests((prev) => prev.filter((x) => x !== r));
+                      }}
+                    >
+                      <XCircle size={16} />
+                      <span>Deny</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className={`right-panel ${showRightPanel ? "" : "hidden"}`}>
             <div className="panel-header">
               <div className="header-title">Sketec</div>
@@ -1349,6 +1959,7 @@ export default function App() {
                 ✖
               </span>
             </div>
+
             <div className="panel-tabs">
               <div
                 className={`panel-tab ${
@@ -1379,6 +1990,7 @@ export default function App() {
                 DM
               </div>
             </div>
+
             <div className="tab-content">
               {activeTab === "members" ? (
                 <div className="member-list">
@@ -1433,6 +2045,7 @@ export default function App() {
                             >
                               {m.st || m.s || "Available"}
                             </div>
+
                             {m.id === identity && showStatusMenu && (
                               <div
                                 className="member-menu-popup"
@@ -1451,16 +2064,18 @@ export default function App() {
                                     {opt.label}
                                   </button>
                                 ))}
-                                {/* <div style={{padding: '5px 8px'}}>
-                                    <input className="status-edit-input" placeholder="Custom status..." value={tempStatusText} onChange={(e)=>setTempStatusText(e.target.value)} onKeyDown={(e)=>{if(e.key==='Enter') handleCustomStatus()}} />
-                                  </div> */}
                               </div>
                             )}
                           </div>
+
                           <div
                             className="status-dot"
                             style={{ background: getStatusColor(m.s) }}
                           ></div>
+                          {m.micMuted && (
+                            <div className="menu-mute-icon">🔇</div>
+                          )}
+
                           {selectedMemberId === m.id && m.id !== identity && (
                             <div className="member-menu-popup">
                               <button
@@ -1480,7 +2095,8 @@ export default function App() {
                                   sendSummon(m.id);
                                 }}
                               >
-                                <span>👋</span> Summon
+                                <Hand size={14} />
+                                <span>Summon</span>
                               </button>
                               <button
                                 className="menu-action-btn"
@@ -1493,6 +2109,18 @@ export default function App() {
                               >
                                 <span>💬</span> Message
                               </button>
+                              {!m.micMuted && canHear(m.id) && (
+                                <button
+                                  className="menu-action-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    muteOtherForEveryone(m.id, true);
+                                    setSelectedMemberId(null);
+                                  }}
+                                >
+                                  <span>🔇</span> Mute mic
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1523,6 +2151,8 @@ export default function App() {
                           msg.sender === displayName ? "me" : ""
                         } ${msg.type}`}
                       >
+                        {msg.icon === "approved" && <CheckCircle2 size={14} />}
+                        {msg.icon === "denied" && <XCircle size={14} />}
                         <b>{msg.sender}</b>
                         {msg.text}
                       </div>
@@ -1544,6 +2174,7 @@ export default function App() {
               )}
             </div>
           </div>
+
           <div className="bottom-panel">
             <div className="bottom-group">
               <button
@@ -1567,7 +2198,9 @@ export default function App() {
               >
                 {screenOn ? <MonitorOff size={18} /> : <MonitorUp size={18} />}
               </button>
+
               <div className="divider"></div>
+
               <button
                 className={`icon-btn ${noiseOn ? "on" : ""}`}
                 onClick={toggleNoise}
@@ -1575,6 +2208,26 @@ export default function App() {
               >
                 {noiseOn ? <Sparkles size={18} /> : <Volume2 size={18} />}
               </button>
+
+              {myZone?.id && (
+                <button
+                  className="pill-btn"
+                  onClick={() =>
+                    setZoneLockState(myZone.id, !isZoneLocked(myZone.id))
+                  }
+                  title="Lock/Unlock this room"
+                >
+                  {isZoneLocked(myZone.id) ? (
+                    <>
+                      <DoorOpen size={14} /> Unlock
+                    </>
+                  ) : (
+                    <>
+                      <DoorClosed size={14} /> Lock
+                    </>
+                  )}
+                </button>
+              )}
 
               <button
                 className="icon-btn"
@@ -1584,6 +2237,7 @@ export default function App() {
                 <Settings size={18} />
               </button>
             </div>
+
             <div className="bottom-group">
               <button
                 className="pill-btn"
