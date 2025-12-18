@@ -24,6 +24,9 @@ import {
   GitPullRequestArrow,
 } from "lucide-react";
 
+const GOOGLE_TOKEN_ENDPOINT =
+  import.meta.env.VITE_GOOGLE_TOKEN_ENDPOINT ||
+  "http://localhost:3001/livekit/google-token";
 const TOKEN_ENDPOINT =
   import.meta.env.VITE_TOKEN_ENDPOINT || "http://localhost:3001/livekit/token";
 const MUTE_MIC_ENDPOINT =
@@ -169,6 +172,39 @@ const STATUS_OPTIONS = [
   { label: "Busy", color: "#f59e0b" },
   { label: "Do Not Disturb", color: "#ef4444" },
 ];
+
+const LS_KEY = "sketec_world_profile_v1";
+
+const DEFAULT_PROFILE_PIC = "https://www.gravatar.com/avatar/?d=mp&f=y"; // 👤 neutral
+
+function loadAllProfiles() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function loadProfileByEmail(email) {
+  if (!email) return null;
+  const all = loadAllProfiles();
+  return all[email] || null;
+}
+
+function saveProfileByEmail(email, profile) {
+  if (!email) return;
+  const all = loadAllProfiles();
+  all[email] = profile;
+  localStorage.setItem(LS_KEY, JSON.stringify(all));
+}
+
+function clearProfileByEmail(email) {
+  if (!email) return;
+  const all = loadAllProfiles();
+  delete all[email];
+  localStorage.setItem(LS_KEY, JSON.stringify(all));
+}
 
 function getDistance(p1, p2) {
   return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
@@ -412,11 +448,23 @@ const VideoRenderer = ({
   );
 };
 
+function getLastLoggedInProfile() {
+  const all = loadAllProfiles();
+  const list = Object.values(all || {}).filter((p) => p?.loggedIn && p?.email);
+
+  if (!list.length) return null;
+
+  // เอาคนที่ login ล่าสุด
+  list.sort((a, b) => (b.lastLoginAt || 0) - (a.lastLoginAt || 0));
+  return list[0];
+}
+
 export default function App() {
   const REQUEST_TTL_MS = 20000;
-
   const [requestCountdown, setRequestCountdown] = useState(0);
   const requestTimerRef = useRef(null);
+  const googleBtnRef = useRef(null);
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
 
   const [knock, setKnock] = useState(false);
   const knockTimerRef = useRef(null);
@@ -465,6 +513,25 @@ export default function App() {
   const otherPlayersRef = useRef({});
   const isGhostRef = useRef(false);
   const requestTokenRef = useRef(0);
+
+  const [authed, setAuthed] = useState(false); // ✅ login ผ่าน google แล้ว
+  const [profile, setProfile] = useState(null); // {email,name,avatar,picture}
+  const [draftName, setDraftName] = useState(""); // ✅ ให้แก้ชื่อก่อน join
+  const [draftAvatar, setDraftAvatar] = useState(AVATARS[0]);
+
+  useEffect(() => {
+  const p = getLastLoggedInProfile(); // ✅ โหลดคนที่ login ค้างไว้ล่าสุด
+  if (p?.email) {
+    setAuthed(true);
+    setProfile(p);
+    setDraftName(p.name || "");
+    setDraftAvatar(p.avatar || AVATARS[0]);
+    setJoined(false);
+  } else {
+    setAuthed(false);
+    setProfile(null);
+  }
+}, []);
 
   const stopJoinRequestTimers = () => {
     if (requestTimerRef.current) {
@@ -806,32 +873,19 @@ export default function App() {
   const removeVideoTrack = (sid) =>
     setVideoTracks((prev) => prev.filter((t) => t.id !== sid));
 
-  const handleJoin = async () => {
-    if (!inputName.trim()) return alert("Please enter your name");
-    const spawn = getRandomSpawn();
-    setMyPos(spawn);
-    posRef.current = spawn;
-    targetRef.current = spawn;
-    const uid = `${inputName}#${Math.random().toString(36).slice(2, 6)}`;
-    setIdentity(uid);
-    setDisplayName(inputName);
-    setMyAvatar(selectedAvatar);
-    setJoined(true);
-    await connect(uid);
-  };
-
   const isZoneLocked = (zoneId) => !!lockedZonesRef.current?.[zoneId]?.locked;
   const isAllowedInZone = (zoneId, pid) =>
     !!lockedZonesRef.current?.[zoneId]?.allowedIds?.includes(pid);
 
-  async function connect(userId) {
+  async function connectWithToken(userId, token) {
     try {
-      const res = await fetch(TOKEN_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomName: "OfficeMap", identity: userId }),
-      });
-      const { token } = await res.json();
+      // const res = await fetch(TOKEN_ENDPOINT, {
+      //   method: "POST",
+      //   headers: { "Content-Type": "application/json" },
+      //   body: JSON.stringify({ roomName: "OfficeMap", identity: userId }),
+      // });
+      // const { token } = await res.json();
+
       const room = new Room({ adaptiveStream: true, dynacast: true });
       roomRef.current = room;
 
@@ -1175,11 +1229,117 @@ export default function App() {
       setMicOn(false);
       setConnected(true);
       await loadDevices();
+      return true;
     } catch (e) {
       console.error(e);
       alert("Connection Failed");
+      setConnected(false);
+      return false; // ✅ fail
     }
   }
+
+  const handleJoinAfterLogin = async () => {
+    if (!profile?.email) return alert("Please login first");
+    if (!draftName.trim()) return alert("Please enter display name");
+
+    // อัปเดต localStorage (จำชื่อ+avatar ล่าสุด)
+    const next = {
+      ...profile,
+      name: draftName.trim(),
+      avatar: draftAvatar,
+      lastLoginAt: Date.now(),
+      loggedIn: true,
+    };
+    saveProfileByEmail(next.email, next);
+    setProfile(next);
+
+    // ตั้งค่าผู้เล่น
+    setIdentity(next.email); // ✅ 1 gmail = 1 identity
+    setDisplayName(next.name);
+    setMyAvatar(next.avatar);
+
+    const r = await fetch(GOOGLE_TOKEN_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        roomName: "OfficeMap",
+        idToken: profile.idToken, // 👈 ดูข้อ 3
+        avatar: next.avatar, 
+      }),
+    });
+
+    const data = await r.json();
+    if (!r.ok) {
+      alert(data?.error || "Get token failed");
+      return;
+    }
+
+    const ok = await connectWithToken(next.email, data.token);
+    if (ok) setJoined(true);
+  };
+
+  useEffect(() => {
+    if (joined) return; // อยู่ในเกมไม่ต้อง render
+    if (authed) return; // login แล้วไม่ต้อง render
+    if (!window.google) return;
+    if (!googleBtnRef.current) return;
+
+    // เคลียร์ก่อนกัน render ซ้อน
+    googleBtnRef.current.innerHTML = "";
+
+    window.google.accounts.id.initialize({
+      client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+      callback: async (resp) => {
+        try {
+          const idToken = resp.credential;
+
+          const r = await fetch(GOOGLE_TOKEN_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ roomName: "OfficeMap", idToken }),
+          });
+
+          const data = await r.json();
+          if (!r.ok) return alert(data?.error || "Login failed");
+
+          const prev = loadProfileByEmail(data.profile.email);
+
+          const p = {
+            email: data.profile.email,
+            // ✅ ใช้ชื่อที่เคยแก้ ถ้ามี
+            name: prev?.name || data.profile.name || data.profile.email,
+            picture:
+              data.profile.picture && data.profile.picture.trim()
+                ? data.profile.picture
+                : DEFAULT_PROFILE_PIC, // ✅ fallback
+            avatar: prev?.avatar || AVATARS[0],
+            lastLoginAt: Date.now(),
+            loggedIn: true, // ✅
+            idToken, // 👈 เก็บไว้ใช้ขอ token ตอน join
+          };
+
+          saveProfileByEmail(p.email, p);
+
+          setAuthed(true);
+          setProfile(p);
+          setDraftName(p.name);
+          setDraftAvatar(p.avatar);
+
+          setJoined(false); // ✅ login แล้ว แต่ยังไม่ join
+        } catch (e) {
+          console.error(e);
+          alert("Google login error");
+        }
+      },
+    });
+
+    window.google.accounts.id.renderButton(googleBtnRef.current, {
+      theme: "outline",
+      size: "large",
+      text: "signin_with",
+      shape: "pill",
+    });
+  }, [authed, joined]);
 
   const loadDevices = async () => {
     try {
@@ -1698,19 +1858,18 @@ export default function App() {
   const displayMessages = chatMessages.filter((msg) => {
     if (activeTab === "global") return msg.type === "global";
     if (activeTab === "room") return msg.type === "room";
-     if (activeTab === "dm") {
-    if (msg.type !== "private") return false;
-    if (!dmTarget) return false;
+    if (activeTab === "dm") {
+      if (msg.type !== "private") return false;
+      if (!dmTarget) return false;
 
-    const a = msg.senderId;
-    const b = msg.targetId;
+      const a = msg.senderId;
+      const b = msg.targetId;
 
-    // ✅ เก็บเฉพาะบทสนทนา: me <-> dmTarget
-    return (
-      (a === identity && b === dmTarget) ||
-      (a === dmTarget && b === identity)
-    );
-  }
+      // ✅ เก็บเฉพาะบทสนทนา: me <-> dmTarget
+      return (
+        (a === identity && b === dmTarget) || (a === dmTarget && b === identity)
+      );
+    }
     return false;
   });
 
@@ -1718,51 +1877,61 @@ export default function App() {
     s === "Do Not Disturb" ? "#ef4444" : s === "Busy" ? "#f59e0b" : "#22c55e";
 
   const isDM = activeTab === "dm";
-const formatTime = (ts) =>
-  new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const formatTime = (ts) =>
+    new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
-const renderDM = () => (
-  <div className="dm-thread">
-    {displayMessages.map((msg, i) => {
-      const isMe = msg.senderId === identity; // ใช้ senderId จะชัวร์กว่า sender name
-      const avatar = isMe ? myAvatar : (otherPlayers[msg.senderId]?.a || AVATARS[0]);
-      const name = isMe ? "You" : (otherPlayers[msg.senderId]?.n || msg.sender);
+  const renderDM = () => (
+    <div className="dm-thread">
+      {displayMessages.map((msg, i) => {
+        const isMe = msg.senderId === identity; // ใช้ senderId จะชัวร์กว่า sender name
+        const avatar = isMe
+          ? myAvatar
+          : otherPlayers[msg.senderId]?.a || AVATARS[0];
+        const name = isMe ? "You" : otherPlayers[msg.senderId]?.n || msg.sender;
 
-      return (
-        <div key={i} className={`dm-row ${isMe ? "me" : "other"}`}>
-          {!isMe && (
-            <div className="dm-avatar">
-              <img src={avatar} alt="avatar" />
-            </div>
-          )}
-
-          <div className="dm-col">
-            {!isMe && <div className="dm-name">{name}</div>}
-
-            <div className="dm-bubble-wrap">
-              {isMe && (
-                <div className="dm-meta me">
-                  <span className="dm-time">{formatTime(msg.timestamp)}</span>
-                </div>
-              )}
-
-              <div className={`dm-bubble ${isMe ? "me" : "other"}`}>
-                {msg.text}
+        return (
+          <div key={i} className={`dm-row ${isMe ? "me" : "other"}`}>
+            {!isMe && (
+              <div className="dm-avatar">
+                <img src={avatar} alt="avatar" />
               </div>
+            )}
 
-              {!isMe && (
-                <div className="dm-meta other">
-                  <span className="dm-time">{formatTime(msg.timestamp)}</span>
+            <div className="dm-col">
+              {!isMe && <div className="dm-name">{name}</div>}
+
+              <div className="dm-bubble-wrap">
+                {isMe && (
+                  <div className="dm-meta me">
+                    <span className="dm-time">{formatTime(msg.timestamp)}</span>
+                  </div>
+                )}
+
+                <div className={`dm-bubble ${isMe ? "me" : "other"}`}>
+                  {msg.text}
                 </div>
-              )}
+
+                {!isMe && (
+                  <div className="dm-meta other">
+                    <span className="dm-time">{formatTime(msg.timestamp)}</span>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      );
-    })}
-    <div ref={chatEndRef} />
-  </div>
-);
+        );
+      })}
+      <div ref={chatEndRef} />
+    </div>
+  );
+
+  useEffect(() => {
+    const onClick = () => setShowAccountMenu(false);
+    if (showAccountMenu) {
+      window.addEventListener("click", onClick);
+    }
+    return () => window.removeEventListener("click", onClick);
+  }, [showAccountMenu]);
 
   return (
     <div
@@ -1775,32 +1944,112 @@ const renderDM = () => (
       {!joined && (
         <div className="login-screen">
           <div className="login-card">
-            <h2 style={{ color: "white", marginBottom: "20px" }}>
-              Sketec World Login
-            </h2>
-            <input
-              className="login-input"
-              placeholder="Name"
-              value={inputName}
-              onChange={(e) => setInputName(e.target.value)}
-            />
-            <div className="avatar-selector">
-              {AVATARS.map((a, i) => (
-                <div
-                  key={i}
-                  className={`avatar-option ${
-                    selectedAvatar === a ? "selected" : ""
-                  }`}
-                  onClick={() => setSelectedAvatar(a)}
-                >
-                  <img src={a} alt="char" />
+            <h2 style={{ color: "white", marginBottom: 16 }}>Sketec World</h2>
+
+            {!authed ? (
+              <>
+                <div style={{ marginTop: 12 }}>
+                  <div ref={googleBtnRef} />
                 </div>
-              ))}
-            </div>
-            <button className="start-btn" onClick={handleJoin}>
-              Join
-            </button>
+              </>
+            ) : (
+              <>
+                <input
+                  className="login-input"
+                  placeholder="Display name"
+                  value={draftName}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setDraftName(v);
+
+                    if (profile?.email) {
+    const next = { ...profile, name: v };
+    saveProfileByEmail(profile.email, next);
+                      setProfile(next);
+                    }
+                  }}
+                />
+
+                <div className="avatar-selector">
+                  {AVATARS.map((a, i) => (
+                    <div
+                      key={i}
+                      className={`avatar-option ${
+                        draftAvatar === a ? "selected" : ""
+                      }`}
+                      onClick={() => {
+                        setDraftAvatar(a);
+
+  if (profile?.email) {
+    const next = { ...profile, avatar: a };
+    saveProfileByEmail(profile.email, next);
+                          setProfile(next);
+                        }
+                      }}
+                    >
+                      <img src={a} alt="char" />
+                    </div>
+                  ))}
+                </div>
+
+                <button className="start-btn" onClick={handleJoinAfterLogin}>
+                  Join
+                </button>
+              </>
+            )}
           </div>
+        </div>
+      )}
+
+      {!joined && authed && profile && (
+        <div className="account-wrap">
+          <div
+            className="account-avatar"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowAccountMenu((v) => !v);
+            }}
+          >
+            {profile.picture ? (
+              <img src={profile.picture} alt="me" />
+            ) : (
+              <div className="account-avatar-fallback" />
+            )}
+          </div>
+
+          {showAccountMenu && (
+            <div className="account-menu">
+              <div className="account-email">{profile.email}</div>
+
+              <button
+                className="account-logout"
+                onClick={() => {
+                  if (profile?.email) {
+    saveProfileByEmail(profile.email, {
+      ...profile,
+      loggedIn: false,
+    });
+  }
+
+                  setAuthed(false);
+                  setProfile(null);
+                  setDraftName("");
+                  setDraftAvatar(AVATARS[0]);
+
+                  try {
+                    roomRef.current?.disconnect();
+                  } catch {}
+
+                  setJoined(false);
+                  setConnected(false);
+                  setShowAccountMenu(false);
+                  if (googleBtnRef.current) googleBtnRef.current.innerHTML = "";
+                }}
+              >
+                Logout
+              </button>
+            </div>
+          )}
         </div>
       )}
 
