@@ -520,18 +520,18 @@ export default function App() {
   const [draftAvatar, setDraftAvatar] = useState(AVATARS[0]);
 
   useEffect(() => {
-  const p = getLastLoggedInProfile(); // ✅ โหลดคนที่ login ค้างไว้ล่าสุด
-  if (p?.email) {
-    setAuthed(true);
-    setProfile(p);
-    setDraftName(p.name || "");
-    setDraftAvatar(p.avatar || AVATARS[0]);
-    setJoined(false);
-  } else {
-    setAuthed(false);
-    setProfile(null);
-  }
-}, []);
+    const p = getLastLoggedInProfile(); // ✅ โหลดคนที่ login ค้างไว้ล่าสุด
+    if (p?.email) {
+      setAuthed(true);
+      setProfile(p);
+      setDraftName(p.name || "");
+      setDraftAvatar(p.avatar || AVATARS[0]);
+      setJoined(false);
+    } else {
+      setAuthed(false);
+      setProfile(null);
+    }
+  }, []);
 
   const stopJoinRequestTimers = () => {
     if (requestTimerRef.current) {
@@ -1264,7 +1264,7 @@ export default function App() {
       body: JSON.stringify({
         roomName: "OfficeMap",
         idToken: profile.idToken, // 👈 ดูข้อ 3
-        avatar: next.avatar, 
+        avatar: next.avatar,
       }),
     });
 
@@ -1320,12 +1320,14 @@ export default function App() {
 
           saveProfileByEmail(p.email, p);
 
-          setAuthed(true);
           setProfile(p);
           setDraftName(p.name);
           setDraftAvatar(p.avatar);
 
           setJoined(false); // ✅ login แล้ว แต่ยังไม่ join
+
+          
+          setAuthed(true);
         } catch (e) {
           console.error(e);
           alert("Google login error");
@@ -1933,6 +1935,8 @@ export default function App() {
     return () => window.removeEventListener("click", onClick);
   }, [showAccountMenu]);
 
+  const isLoggedIn = !!profile?.email;
+
   return (
     <div
       className="game-container"
@@ -1946,7 +1950,7 @@ export default function App() {
           <div className="login-card">
             <h2 style={{ color: "white", marginBottom: 16 }}>Sketec World</h2>
 
-            {!authed ? (
+            {!isLoggedIn ? (
               <>
                 <div style={{ marginTop: 12 }}>
                   <div ref={googleBtnRef} />
@@ -1963,8 +1967,8 @@ export default function App() {
                     setDraftName(v);
 
                     if (profile?.email) {
-    const next = { ...profile, name: v };
-    saveProfileByEmail(profile.email, next);
+                      const next = { ...profile, name: v };
+                      saveProfileByEmail(profile.email, next);
                       setProfile(next);
                     }
                   }}
@@ -1980,9 +1984,9 @@ export default function App() {
                       onClick={() => {
                         setDraftAvatar(a);
 
-  if (profile?.email) {
-    const next = { ...profile, avatar: a };
-    saveProfileByEmail(profile.email, next);
+                        if (profile?.email) {
+                          const next = { ...profile, avatar: a };
+                          saveProfileByEmail(profile.email, next);
                           setProfile(next);
                         }
                       }}
@@ -2025,11 +2029,11 @@ export default function App() {
                 className="account-logout"
                 onClick={() => {
                   if (profile?.email) {
-    saveProfileByEmail(profile.email, {
-      ...profile,
-      loggedIn: false,
-    });
-  }
+                    saveProfileByEmail(profile.email, {
+                      ...profile,
+                      loggedIn: false,
+                    });
+                  }
 
                   setAuthed(false);
                   setProfile(null);
