@@ -22,6 +22,7 @@ import {
   MessageCircle,
   Footprints,
   GitPullRequestArrow,
+  LockOpen
 } from "lucide-react";
 
 const GOOGLE_TOKEN_ENDPOINT =
@@ -1326,7 +1327,6 @@ export default function App() {
 
           setJoined(false); // ✅ login แล้ว แต่ยังไม่ join
 
-          
           setAuthed(true);
         } catch (e) {
           console.error(e);
@@ -2301,7 +2301,36 @@ export default function App() {
                 <div className="member-list">
                   {sortedKeys.map((zName) => (
                     <div key={zName}>
-                      <div className="group-header">{zName}</div>
+                      <div className="group-header with-actions">
+                        <span>{zName}</span>
+
+                        {/* 🔒 / 🔓 แสดงเฉพาะห้องที่เราอยู่ */}
+                        {myZone?.name === zName && (
+                          <span
+                            className={`room-lock-icon ${
+                              isZoneLocked(myZone.id) ? "locked" : "unlocked"
+                            }`}
+                            title={
+                              isZoneLocked(myZone.id)
+                                ? "Unlock room"
+                                : "Lock room"
+                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setZoneLockState(
+                                myZone.id,
+                                !isZoneLocked(myZone.id)
+                              );
+                            }}
+                          >
+                            {isZoneLocked(myZone.id) ? (
+                              <Lock size={16} />
+                            ) : (
+                              <LockOpen size={16} />
+                            )}
+                          </span>
+                        )}
+                      </div>
                       {groupedMembers[zName].map((m) => (
                         <div
                           key={m.id}
@@ -2533,26 +2562,6 @@ export default function App() {
                 {noiseOn ? <Sparkles size={18} /> : <Volume2 size={18} />}
               </button>
 
-              {myZone?.id && (
-                <button
-                  className="pill-btn"
-                  onClick={() =>
-                    setZoneLockState(myZone.id, !isZoneLocked(myZone.id))
-                  }
-                  title="Lock/Unlock this room"
-                >
-                  {isZoneLocked(myZone.id) ? (
-                    <>
-                      <DoorOpen size={14} /> Unlock
-                    </>
-                  ) : (
-                    <>
-                      <DoorClosed size={14} /> Lock
-                    </>
-                  )}
-                </button>
-              )}
-
               <button
                 className="icon-btn"
                 onClick={() => setShowSettings(!showSettings)}
@@ -2576,7 +2585,7 @@ export default function App() {
 
           {showSettings && (
             <div className="settings-modal">
-              <h3>⚙️ Settings</h3>
+              <div className="settings-header"><Settings size={18} /> Settings</div>
               <div className="settings-group">
                 <label>Microphone</label>
                 <select
