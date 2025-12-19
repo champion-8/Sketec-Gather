@@ -68,6 +68,69 @@ body,
 }
 .avatar-option img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
 
+@media (max-width: 768px) {
+  .login-screen {
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .login-card {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    border-radius: 0;
+    padding: 20px 16px 28px;
+    box-shadow: none;
+
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* หัว */
+  .login-card h2 {
+    margin-top: 24px;
+    margin-bottom: 20px;
+    font-size: 22px;
+    text-align: center;
+  }
+
+  /* input name */
+  .login-input {
+    font-size: 16px; /* กัน iOS zoom */
+    padding: 14px 12px;
+  }
+
+  /* avatar selector */
+  .avatar-selector {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+    overflow-y: auto;
+    flex: 1; /* ดันให้เลื่อนได้ */
+    max-height: calc(100vh - 290px);
+  }
+
+  .avatar-option img {
+    width: 100%;
+    height: auto;
+  }
+
+  /* Google button center */
+  .login-card > div {
+    display: flex;
+    justify-content: center;
+  }
+
+  /* Join button */
+  .start-btn {
+    margin-top: 20px;
+    padding: 14px;
+    font-size: 16px;
+    border-radius: 12px;
+  }
+}
+
 
 /* --- World Layer --- */
 .world-layer {
