@@ -1222,13 +1222,12 @@ export default function App() {
     setDisplayName(draftName.trim());
     setMyAvatar(draftAvatar);
 
-    const r = await fetch(GOOGLE_TOKEN_ENDPOINT, {
+    const r = await fetch(TOKEN_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         roomName: "OfficeMap",
-        idToken: userId, // 👈 ดูข้อ 3
-        avatar: draftAvatar,
+        idToken: userId
       }),
     });
 
