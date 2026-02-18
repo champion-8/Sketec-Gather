@@ -187,25 +187,6 @@ function loadAllProfiles() {
   }
 }
 
-function loadProfileByEmail(email) {
-  if (!email) return null;
-  const all = loadAllProfiles();
-  return all[email] || null;
-}
-
-function saveProfileByEmail(email, profile) {
-  if (!email) return;
-  const all = loadAllProfiles();
-  all[email] = profile;
-  localStorage.setItem(LS_KEY, JSON.stringify(all));
-}
-
-function clearProfileByEmail(email) {
-  if (!email) return;
-  const all = loadAllProfiles();
-  delete all[email];
-  localStorage.setItem(LS_KEY, JSON.stringify(all));
-}
 
 function getDistance(p1, p2) {
   return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
@@ -464,7 +445,6 @@ export default function App() {
   const REQUEST_TTL_MS = 20000;
   const [requestCountdown, setRequestCountdown] = useState(0);
   const requestTimerRef = useRef(null);
-  const googleBtnRef = useRef(null);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
 
   const [knock, setKnock] = useState(false);
@@ -515,24 +495,17 @@ export default function App() {
   const isGhostRef = useRef(false);
   const requestTokenRef = useRef(0);
 
-  const [authed, setAuthed] = useState(false); // ✅ login ผ่าน google แล้ว
-  const [profile, setProfile] = useState(null); // {email,name,avatar,picture}
   const [draftName, setDraftName] = useState(""); // ✅ ให้แก้ชื่อก่อน join
   const [draftAvatar, setDraftAvatar] = useState(AVATARS[0]);
 
-  useEffect(() => {
-    const p = getLastLoggedInProfile(); // ✅ โหลดคนที่ login ค้างไว้ล่าสุด
-    if (p?.email) {
-      setAuthed(true);
-      setProfile(p);
-      setDraftName(p.name || "");
-      setDraftAvatar(p.avatar || AVATARS[0]);
-      setJoined(false);
-    } else {
-      setAuthed(false);
-      setProfile(null);
-    }
-  }, []);
+  // useEffect(() => {
+  //   const p = getLastLoggedInProfile(); // ✅ โหลดคนที่ login ค้างไว้ล่าสุด
+  //   if (p?.email) {
+  //     setDraftName(p.name || "");
+  //     setDraftAvatar(p.avatar || AVATARS[0]);
+  //     setJoined(false);
+  //   }
+  // }, []);
 
   const stopJoinRequestTimers = () => {
     if (requestTimerRef.current) {
@@ -1240,32 +1213,22 @@ export default function App() {
   }
 
   const handleJoinAfterLogin = async () => {
-    if (!profile?.email) return alert("Please login first");
     if (!draftName.trim()) return alert("Please enter display name");
 
-    // อัปเดต localStorage (จำชื่อ+avatar ล่าสุด)
-    const next = {
-      ...profile,
-      name: draftName.trim(),
-      avatar: draftAvatar,
-      lastLoginAt: Date.now(),
-      loggedIn: true,
-    };
-    saveProfileByEmail(next.email, next);
-    setProfile(next);
+  const userId = draftName.trim();
 
     // ตั้งค่าผู้เล่น
-    setIdentity(next.email); // ✅ 1 gmail = 1 identity
-    setDisplayName(next.name);
-    setMyAvatar(next.avatar);
+    setIdentity(userId); // ✅ 1 gmail = 1 identity
+    setDisplayName(draftName.trim());
+    setMyAvatar(draftAvatar);
 
     const r = await fetch(GOOGLE_TOKEN_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         roomName: "OfficeMap",
-        idToken: profile.idToken, // 👈 ดูข้อ 3
-        avatar: next.avatar,
+        idToken: userId, // 👈 ดูข้อ 3
+        avatar: draftAvatar,
       }),
     });
 
@@ -1275,73 +1238,9 @@ export default function App() {
       return;
     }
 
-    const ok = await connectWithToken(next.email, data.token);
+    const ok = await connectWithToken(userId, data.token);
     if (ok) setJoined(true);
   };
-
-  useEffect(() => {
-    if (joined) return; // อยู่ในเกมไม่ต้อง render
-    if (authed) return; // login แล้วไม่ต้อง render
-    if (!window.google) return;
-    if (!googleBtnRef.current) return;
-
-    // เคลียร์ก่อนกัน render ซ้อน
-    googleBtnRef.current.innerHTML = "";
-
-    window.google.accounts.id.initialize({
-      client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-      callback: async (resp) => {
-        try {
-          const idToken = resp.credential;
-
-          const r = await fetch(GOOGLE_TOKEN_ENDPOINT, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ roomName: "OfficeMap", idToken }),
-          });
-
-          const data = await r.json();
-          if (!r.ok) return alert(data?.error || "Login failed");
-
-          const prev = loadProfileByEmail(data.profile.email);
-
-          const p = {
-            email: data.profile.email,
-            // ✅ ใช้ชื่อที่เคยแก้ ถ้ามี
-            name: prev?.name || data.profile.name || data.profile.email,
-            picture:
-              data.profile.picture && data.profile.picture.trim()
-                ? data.profile.picture
-                : DEFAULT_PROFILE_PIC, // ✅ fallback
-            avatar: prev?.avatar || AVATARS[0],
-            lastLoginAt: Date.now(),
-            loggedIn: true, // ✅
-            idToken, // 👈 เก็บไว้ใช้ขอ token ตอน join
-          };
-
-          saveProfileByEmail(p.email, p);
-
-          setProfile(p);
-          setDraftName(p.name);
-          setDraftAvatar(p.avatar);
-
-          setJoined(false); // ✅ login แล้ว แต่ยังไม่ join
-
-          setAuthed(true);
-        } catch (e) {
-          console.error(e);
-          alert("Google login error");
-        }
-      },
-    });
-
-    window.google.accounts.id.renderButton(googleBtnRef.current, {
-      theme: "outline",
-      size: "large",
-      text: "signin_with",
-      shape: "pill",
-    });
-  }, [authed, joined]);
 
   const loadDevices = async () => {
     try {
@@ -1935,7 +1834,6 @@ export default function App() {
     return () => window.removeEventListener("click", onClick);
   }, [showAccountMenu]);
 
-  const isLoggedIn = !!profile?.email;
 
   return (
     <div
@@ -1950,28 +1848,11 @@ export default function App() {
           <div className="login-card">
             <h2 style={{ color: "white", marginBottom: 16 }}>Sketec World</h2>
 
-            {!isLoggedIn ? (
-              <>
-                <div style={{ marginTop: 12 }}>
-                  <div ref={googleBtnRef} />
-                </div>
-              </>
-            ) : (
-              <>
                 <input
                   className="login-input"
                   placeholder="Display name"
                   value={draftName}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setDraftName(v);
-
-                    if (profile?.email) {
-                      const next = { ...profile, name: v };
-                      saveProfileByEmail(profile.email, next);
-                      setProfile(next);
-                    }
-                  }}
+                  onChange={(e) => setDraftName(e.target.value)}
                 />
 
                 <div className="avatar-selector">
@@ -1981,15 +1862,7 @@ export default function App() {
                       className={`avatar-option ${
                         draftAvatar === a ? "selected" : ""
                       }`}
-                      onClick={() => {
-                        setDraftAvatar(a);
-
-                        if (profile?.email) {
-                          const next = { ...profile, avatar: a };
-                          saveProfileByEmail(profile.email, next);
-                          setProfile(next);
-                        }
-                      }}
+            onClick={() => setDraftAvatar(a)}
                     >
                       <img src={a} alt="char" />
                     </div>
@@ -1999,63 +1872,10 @@ export default function App() {
                 <button className="start-btn" onClick={handleJoinAfterLogin}>
                   Join
                 </button>
-              </>
-            )}
           </div>
         </div>
       )}
 
-      {!joined && authed && profile && (
-        <div className="account-wrap">
-          <div
-            className="account-avatar"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowAccountMenu((v) => !v);
-            }}
-          >
-            {profile.picture ? (
-              <img src={profile.picture} alt="me" />
-            ) : (
-              <div className="account-avatar-fallback" />
-            )}
-          </div>
-
-          {showAccountMenu && (
-            <div className="account-menu">
-              <div className="account-email">{profile.email}</div>
-
-              <button
-                className="account-logout"
-                onClick={() => {
-                  if (profile?.email) {
-                    saveProfileByEmail(profile.email, {
-                      ...profile,
-                      loggedIn: false,
-                    });
-                  }
-
-                  setAuthed(false);
-                  setProfile(null);
-                  setDraftName("");
-                  setDraftAvatar(AVATARS[0]);
-
-                  try {
-                    roomRef.current?.disconnect();
-                  } catch {}
-
-                  setJoined(false);
-                  setConnected(false);
-                  setShowAccountMenu(false);
-                  if (googleBtnRef.current) googleBtnRef.current.innerHTML = "";
-                }}
-              >
-                Logout
-              </button>
-            </div>
-          )}
-        </div>
-      )}
 
       {joined && (
         <>

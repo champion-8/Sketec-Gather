@@ -105,10 +105,10 @@ body,
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 12px;
-    margin-top: 16px;
+    margin-top: 10px;
     overflow-y: auto;
     flex: 1; /* ดันให้เลื่อนได้ */
-    max-height: calc(100vh - 290px);
+    max-height: calc(100vh - 320px);
   }
 
   .avatar-option img {
